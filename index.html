@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Maestro Fantoche Co-op</title>
+    <title>Little Cat Dance - Jogo de Ritmo</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         /* --- CSS STYLING --- */
@@ -37,9 +37,8 @@
     <!-- --- FIREBASE IMPORTS AND INITIALIZATION --- -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Global Firebase variables exposed to the window object
         window.db = null;
@@ -49,63 +48,201 @@
         
         // Firestore function exposure (required for non-module script access)
         window.doc = doc;
+        window.getDoc = getDoc;
         window.setDoc = setDoc;
         window.onSnapshot = onSnapshot;
+        window.serverTimestamp = serverTimestamp;
+
+        // Configuração do Firebase - SUBSTITUA COM SUAS CREDENCIAIS
+        // Para obter suas credenciais:
+        // 1. Acesse https://console.firebase.google.com/
+        // 2. Crie um projeto (ou use um existente)
+        // 3. Vá em "Configurações do Projeto" > "Geral"
+        // 4. Role até "Seus apps" > "SDK do Firebase" > "Config"
+        const firebaseConfig = {
+            apiKey: "AIzaSyDEMOKEY-REPLACE-WITH-YOUR-KEY",
+            authDomain: "your-project.firebaseapp.com",
+            projectId: "your-project-id",
+            storageBucket: "your-project.appspot.com",
+            messagingSenderId: "123456789",
+            appId: "1:123456789:web:abcdef123456"
+        };
+
+        // MODO DEMO (sem Firebase real - apenas local)
+        const DEMO_MODE = true; // Mude para false quando tiver Firebase configurado
 
         try {
-            setLogLevel('Debug');
-            
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-
-            if (firebaseConfig) {
+            if (!DEMO_MODE) {
+                // Modo Firebase real
                 const app = initializeApp(firebaseConfig);
                 window.db = getFirestore(app);
                 window.auth = getAuth(app);
                 
-                // Authentication Handler
                 onAuthStateChanged(window.auth, async (user) => {
                     if (user) {
                         window.userId = user.uid;
                     } else {
-                        if (typeof __initial_auth_token !== 'undefined') {
-                             try {
-                                const token = __initial_auth_token;
-                                await signInWithCustomToken(window.auth, token);
-                             } catch(error) {
-                                await signInAnonymously(window.auth);
-                             }
-                        } else {
-                            await signInAnonymously(window.auth);
-                        }
-                        window.userId = window.auth.currentUser?.uid || crypto.randomUUID();
+                        await signInAnonymously(window.auth);
+                        window.userId = window.auth.currentUser?.uid;
                     }
                     window.isAuthReady = true;
                 });
             } else {
+                // Modo DEMO - simula Firebase localmente
+                console.log('🎮 MODO DEMO - Funcionando sem Firebase (apenas local)');
+                window.userId = 'demo-user-' + Math.random().toString(36).substr(2, 9);
                 window.isAuthReady = true;
+                
+                // Mock das funções do Firebase
+                window.demoDatabase = {};
+                
+                window.doc = (db, path) => ({ path });
+                
+                window.getDoc = async (docRef) => {
+                    const data = window.demoDatabase[docRef.path];
+                    return {
+                        exists: () => !!data,
+                        data: () => data
+                    };
+                };
+                
+                window.setDoc = async (docRef, data, options) => {
+                    if (options?.merge) {
+                        window.demoDatabase[docRef.path] = {
+                            ...window.demoDatabase[docRef.path],
+                            ...data
+                        };
+                    } else {
+                        window.demoDatabase[docRef.path] = data;
+                    }
+                    // Notifica listeners
+                    if (window.demoListeners[docRef.path]) {
+                        window.demoListeners[docRef.path].forEach(callback => {
+                            callback({
+                                exists: () => true,
+                                data: () => window.demoDatabase[docRef.path]
+                            });
+                        });
+                    }
+                };
+                
+                window.demoListeners = {};
+                window.onSnapshot = (docRef, callback) => {
+                    if (!window.demoListeners[docRef.path]) {
+                        window.demoListeners[docRef.path] = [];
+                    }
+                    window.demoListeners[docRef.path].push(callback);
+                    
+                    // Chama callback inicial
+                    setTimeout(() => {
+                        const data = window.demoDatabase[docRef.path];
+                        callback({
+                            exists: () => !!data,
+                            data: () => data
+                        });
+                    }, 100);
+                    
+                    // Retorna função de unsubscribe
+                    return () => {
+                        const index = window.demoListeners[docRef.path].indexOf(callback);
+                        if (index > -1) {
+                            window.demoListeners[docRef.path].splice(index, 1);
+                        }
+                    };
+                };
             }
         } catch (e) {
             console.error("Firebase initialization failed:", e);
+            console.log('⚠️ Ativando modo DEMO...');
+            // Ativa modo demo em caso de erro
+            window.userId = 'demo-user-' + Math.random().toString(36).substr(2, 9);
             window.isAuthReady = true;
         }
     </script>
 
     <!-- --- HTML STRUCTURE --- -->
     <div id="game-container" class="w-full max-w-5xl bg-gray-800 p-8 rounded-xl shadow-2xl transition-all duration-300">
-        <h1 class="text-4xl font-black text-center mb-6 text-yellow-300 tracking-wider">Maestro Fantoche Co-op</h1>
+        <h1 class="text-4xl font-black text-center mb-6 text-yellow-300 tracking-wider">🎵 Little Cat Dance 🎵</h1>
 
-        <!-- Score and Info Bar -->
-        <div class="grid grid-cols-3 gap-4 items-center mb-6 text-white text-xl font-bold p-3 bg-gray-700 rounded-lg">
-            <div class="text-lg text-green-400">P2 (WASD): <span id="score-p2-display">0</span></div>
-            <div class="text-center">
-                Total: <span id="score-total-display" class="text-green-400">0</span> | BPM: <span id="bpm-display">0</span>
+        <!-- Room Info and Controls -->
+        <div id="lobby-screen" class="mb-6">
+            <!-- Demo Mode Warning -->
+            <div id="demo-mode-warning" class="bg-yellow-600 border-2 border-yellow-400 p-4 rounded-lg mb-4 hidden">
+                <div class="flex items-center gap-3">
+                    <span class="text-3xl">⚠️</span>
+                    <div class="flex-1">
+                        <h3 class="text-white font-bold text-lg">MODO DEMO ATIVO</h3>
+                        <p class="text-yellow-100 text-sm">Multiplayer funcionando APENAS localmente (mesmo computador). Para jogar online com amigos, configure o Firebase.</p>
+                        <a href="#" onclick="alert('1. Acesse https://console.firebase.google.com/\n2. Crie um projeto\n3. Ative Firestore Database\n4. Copie as credenciais\n5. Cole no código (linha 42-48)')" 
+                           class="text-white underline text-sm font-bold">Como configurar Firebase →</a>
+                    </div>
+                </div>
             </div>
-            <div class="text-lg text-blue-400 text-right">P1 (Setas): <span id="score-p1-display">0</span></div>
             
-            <div class="col-span-3 text-center text-yellow-400 text-sm font-normal">
-                Recorde Global: <span id="high-score-display">0</span> 
-                <span id="user-id-display" class="ml-4 text-gray-400">ID: Carregando...</span>
+            <div class="bg-gray-700 p-6 rounded-lg text-center">
+                <h2 class="text-2xl font-bold text-yellow-300 mb-4">🌐 Modo Multiplayer Online</h2>
+                <div class="flex gap-4 justify-center items-end">
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-2">Seu Nome:</label>
+                        <input id="player-name-input" type="text" maxlength="15" placeholder="Digite seu nome" 
+                            class="px-4 py-2 rounded bg-gray-600 text-white border-2 border-gray-500 focus:border-yellow-400 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-2">Código da Sala:</label>
+                        <input id="room-code-input" type="text" maxlength="6" placeholder="Ex: ABC123" 
+                            class="px-4 py-2 rounded bg-gray-600 text-white border-2 border-gray-500 focus:border-yellow-400 outline-none uppercase">
+                    </div>
+                    <button id="join-room-btn" class="px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition">
+                        Entrar na Sala
+                    </button>
+                    <button id="create-room-btn" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition">
+                        Criar Nova Sala
+                    </button>
+                </div>
+                <div class="mt-4 text-sm text-gray-400">
+                    Compartilhe o código da sala com seus amigos para jogarem juntos!
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Info Bar -->
+        <div id="game-info-bar" class="mb-6 hidden">
+            <div class="bg-gray-700 p-4 rounded-lg mb-4">
+                <div class="flex justify-between items-center">
+                    <div class="text-yellow-300 font-bold">
+                        🎮 Sala: <span id="current-room-code" class="text-2xl">----</span>
+                    </div>
+                    <div class="text-gray-300">
+                        <span id="players-count">0</span> jogadores online
+                    </div>
+                    <button id="leave-room-btn" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded transition text-sm">
+                        Sair da Sala
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Players Scores -->
+            <div class="grid grid-cols-1 gap-2 mb-4" id="players-list">
+                <!-- Players will be added here dynamically -->
+            </div>
+
+            <!-- Game Controls -->
+            <div class="grid grid-cols-3 gap-4 items-center text-white text-xl font-bold p-3 bg-gray-700 rounded-lg">
+                <div class="text-lg text-center">
+                    <div class="text-2xl text-yellow-400">Seus Pontos: <span id="score-display">0</span></div>
+                    <div class="text-sm text-gray-400 mt-1">Recorde Pessoal: <span id="high-score-display">0</span></div>
+                </div>
+                <div class="text-center">
+                    <div class="text-2xl">
+                        <span class="text-red-400">❤️</span> 
+                        <span id="lives-display" class="text-red-400">3</span>
+                    </div>
+                    <div class="text-sm text-gray-400 mt-1">Suas Vidas</div>
+                </div>
+                <div class="text-lg text-center">
+                    <div class="text-2xl text-purple-400">BPM: <span id="bpm-display">60</span></div>
+                    <div class="text-sm text-gray-400 mt-1">Combo: <span id="combo-display">0</span>x</div>
+                </div>
             </div>
         </div>
         
@@ -113,16 +250,24 @@
         <div class="relative flex flex-col items-center justify-center p-4">
             
             <!-- Timing Bar (Beat Visualizer) -->
-            <div id="timing-bar" class="w-full h-4 bg-gray-900 rounded-full mb-8 relative overflow-hidden shadow-inner">
-                <div id="beat-marker" class="absolute top-0 bottom-0 w-1 bg-yellow-400 opacity-70" style="left:50%; transform: translateX(-50%);"></div>
-                <div id="perfect-zone" class="absolute top-0 bottom-0 bg-green-500 opacity-20" style="width: 10%; left:45%;"></div>
-                <div id="good-zone-left" class="absolute top-0 bottom-0 bg-blue-500 opacity-20" style="width: 15%; left:30%;"></div>
-                <div id="good-zone-right" class="absolute top-0 bottom-0 bg-blue-500 opacity-20" style="width: 15%; left:55%;"></div>
-                <div id="rhythm-indicator" class="h-full bg-red-500 rounded-full" style="width: 0;"></div>
+            <div id="timing-bar" class="w-full h-8 bg-gray-900 rounded-full mb-8 relative overflow-hidden shadow-inner border-2 border-gray-700">
+                <div id="beat-marker" class="absolute top-0 bottom-0 w-1 bg-yellow-400 opacity-90 z-10" style="left:50%; transform: translateX(-50%);"></div>
+                <div id="perfect-zone" class="absolute top-0 bottom-0 bg-green-500 opacity-30" style="width: 8%; left:46%;"></div>
+                <div id="good-zone-left" class="absolute top-0 bottom-0 bg-blue-500 opacity-25" style="width: 20%; left:26%;"></div>
+                <div id="good-zone-right" class="absolute top-0 bottom-0 bg-blue-500 opacity-25" style="width: 20%; left:54%;"></div>
+                <div id="rhythm-indicator" class="h-full bg-gradient-to-r from-red-600 via-yellow-500 to-green-500 transition-all" style="width: 0;"></div>
             </div>
 
             <!-- Canvas Area for Figures -->
             <canvas id="game-canvas" width="800" height="300" class="bg-gray-900 rounded-lg shadow-xl border-4 border-gray-700"></canvas>
+
+            <!-- Start Game Button (shown when in room but not playing) -->
+            <div id="start-game-container" class="mt-4 text-center hidden">
+                <button id="start-game-btn" class="px-8 py-3 bg-green-600 hover:bg-green-700 text-white font-bold text-xl rounded-lg transition shadow-lg">
+                    🎮 Começar a Jogar!
+                </button>
+                <p class="text-sm text-gray-400 mt-2">Pressione qualquer tecla ou clique no botão</p>
+            </div>
 
             <!-- Feedback Message -->
             <div id="feedback-message" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-6xl font-extrabold opacity-0 transition-opacity duration-100 ease-in-out pointer-events-none"></div>
@@ -134,34 +279,25 @@
 
         <!-- Controls -->
         <div class="mt-6 text-center text-gray-300">
-            <p class="mb-4 text-xl font-semibold">Espelhem a pose do Maestro (Centro) no ritmo crescente!</p>
+            <p class="mb-4 text-xl font-semibold">🎵 Copie o movimento do Maestro (Centro) no tempo certo! 🎵</p>
             
-            <div class="flex justify-center space-x-12">
-                <!-- Player 2 Controls (WASD) - Left Side -->
-                <div class="flex flex-col items-center p-4 bg-gray-700 rounded-lg shadow-inner border-t-4 border-green-400">
-                    <h3 class="text-green-400 font-bold mb-3">JOGADOR 2 (Fantoche Verde)</h3>
+            <div class="flex justify-center gap-4">
+                <!-- Controls Grid -->
+                <div class="flex flex-col items-center p-6 bg-gray-700 rounded-lg shadow-inner border-t-4 border-yellow-400">
+                    <h3 class="text-yellow-400 font-bold mb-3 text-lg">CONTROLES</h3>
                     <div class="grid grid-cols-3 gap-2">
                         <div></div>
-                        <button data-key="w" class="key-button text-xs bg-gray-600 hover:bg-gray-500 active:bg-green-400 text-white font-bold py-2 px-3 rounded-lg transition shadow-md">W Cima</button>
+                        <button data-key="w" class="key-button text-sm bg-gray-600 hover:bg-gray-500 active:bg-yellow-400 text-white font-bold py-3 px-4 rounded-lg transition shadow-md">W<br>↑</button>
                         <div></div>
-                        <button data-key="a" class="key-button text-xs bg-gray-600 hover:bg-gray-500 active:bg-green-400 text-white font-bold py-2 px-3 rounded-lg transition shadow-md">A Esq</button>
-                        <button data-key="s" class="key-button text-xs bg-gray-600 hover:bg-gray-500 active:bg-green-400 text-white font-bold py-2 px-3 rounded-lg transition shadow-md">S Baixo</button>
-                        <button data-key="d" class="key-button text-xs bg-gray-600 hover:bg-gray-500 active:bg-green-400 text-white font-bold py-2 px-3 rounded-lg transition shadow-md">D Dir</button>
+                        <button data-key="a" class="key-button text-sm bg-gray-600 hover:bg-gray-500 active:bg-yellow-400 text-white font-bold py-3 px-4 rounded-lg transition shadow-md">A<br>←</button>
+                        <button data-key="s" class="key-button text-sm bg-gray-600 hover:bg-gray-500 active:bg-yellow-400 text-white font-bold py-3 px-4 rounded-lg transition shadow-md">S<br>↓</button>
+                        <button data-key="d" class="key-button text-sm bg-gray-600 hover:bg-gray-500 active:bg-yellow-400 text-white font-bold py-3 px-4 rounded-lg transition shadow-md">D<br>→</button>
                     </div>
                 </div>
-
-                <!-- Player 1 Controls (Setas) - Right Side -->
-                <div class="flex flex-col items-center p-4 bg-gray-700 rounded-lg shadow-inner border-t-4 border-blue-400">
-                    <h3 class="text-blue-400 font-bold mb-3">JOGADOR 1 (Fantoche Azul)</h3>
-                    <div class="grid grid-cols-3 gap-2">
-                        <div></div>
-                        <button data-key="ArrowUp" class="key-button text-xs bg-gray-600 hover:bg-gray-500 active:bg-blue-400 text-white font-bold py-2 px-3 rounded-lg transition shadow-md">↑ Cima</button>
-                        <div></div>
-                        <button data-key="ArrowLeft" class="key-button text-xs bg-gray-600 hover:bg-gray-500 active:bg-blue-400 text-white font-bold py-2 px-3 rounded-lg transition shadow-md">← Esq</button>
-                        <button data-key="ArrowDown" class="key-button text-xs bg-gray-600 hover:bg-gray-500 active:bg-blue-400 text-white font-bold py-2 px-3 rounded-lg transition shadow-md">↓ Baixo</button>
-                        <button data-key="ArrowRight" class="key-button text-xs bg-gray-600 hover:bg-gray-500 active:bg-blue-400 text-white font-bold py-2 px-3 rounded-lg transition shadow-md">→ Dir</button>
-                    </div>
-                </div>
+            </div>
+            
+            <div class="mt-4 text-sm text-gray-400">
+                <p><span class="text-green-400">EXCELENTE</span> = Centro da barra | <span class="text-blue-400">BOM</span> = Zonas azuis | <span class="text-red-400">ERROU</span> = Perde vida!</p>
             </div>
         </div>
         
@@ -176,65 +312,76 @@
     <!-- Instructions Modal (Hidden by default) -->
     <div id="instructions-modal" class="modal-overlay">
         <div class="modal-content">
-            <h2 class="text-3xl font-black text-yellow-300 mb-4 border-b border-gray-500 pb-2">Instruções do Jogo: Maestro Fantoche Co-op</h2>
+            <h2 class="text-3xl font-black text-yellow-300 mb-4 border-b border-gray-500 pb-2">🎵 Little Cat Dance - Multiplayer Online 🎵</h2>
             
-            <h3 class="text-xl font-bold text-white mt-4 mb-2">O seu Objetivo</h3>
-            <p class="text-gray-300">Ambos os jogadores devem **espelhar a pose do Maestro (Laranja)**, controlando o seu respetivo Fantoche (Verde ou Azul), premindo a tecla correta no momento exato em que a batida ocorre. O objetivo é alcançar a maior **Pontuação Total** possível em conjunto.</p>
+            <h3 class="text-xl font-bold text-green-400 mt-4 mb-2">🌐 Como Jogar Online</h3>
+            <div class="bg-gray-600 p-3 rounded mb-3">
+                <p class="text-gray-300 mb-2"><span class="font-bold text-yellow-300">1. Criar Sala:</span> Digite seu nome e clique em "Criar Nova Sala"</p>
+                <p class="text-gray-300 mb-2"><span class="font-bold text-yellow-300">2. Compartilhar:</span> Envie o código de 6 caracteres para seus amigos</p>
+                <p class="text-gray-300"><span class="font-bold text-yellow-300">3. Jogar:</span> Todos veem o mesmo Maestro e competem pela maior pontuação!</p>
+            </div>
             
-            <h3 class="text-xl font-bold text-green-400 mt-4 mb-2">Dificuldade Dinâmica</h3>
-            <p class="text-gray-300">O jogo começa a **50 BPM** (1200ms por batida), um ritmo muito lento e fácil. O BPM aumenta em **+5** a cada vez que a **Pontuação Total** atinge um múltiplo de 500 (500, 1000, 1500, etc.). O desafio aumenta à medida que jogam!</p>
-
-            <h3 class="text-xl font-bold text-white mt-4 mb-2">Controles e Poses</h3>
-            <table class="w-full text-left border-collapse mt-2">
+            <h3 class="text-xl font-bold text-white mt-4 mb-2">📋 Objetivo</h3>
+            <p class="text-gray-300">Copie os movimentos do <span class="text-orange-400 font-bold">Maestro</span> (boneco laranja) pressionando a tecla correta no tempo exato da batida! Compete com seus amigos para ver quem consegue a maior pontuação!</p>
+            
+            <h3 class="text-xl font-bold text-yellow-400 mt-4 mb-2">🎮 Controles</h3>
+            <table class="w-full text-left border-collapse mt-2 bg-gray-700 rounded">
                 <thead>
-                    <tr>
-                        <th class="py-2 border-b border-gray-500">Pose</th>
-                        <th class="py-2 border-b border-gray-500 text-green-400">P2 (WASD) - Esquerda</th>
-                        <th class="py-2 border-b border-gray-500 text-blue-400">P1 (Setas) - Direita</th>
+                    <tr class="bg-gray-600">
+                        <th class="py-2 px-3 border-b border-gray-500">Movimento</th>
+                        <th class="py-2 px-3 border-b border-gray-500">Teclas</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr class="border-b border-gray-600">
-                        <td class="py-2 font-bold">Braços para Cima</td>
-                        <td class="py-2">W</td>
-                        <td class="py-2">↑ Cima</td>
+                        <td class="py-2 px-3 font-bold">Braços para Cima</td>
+                        <td class="py-2 px-3"><kbd class="bg-gray-800 px-2 py-1 rounded">W</kbd> ou <kbd class="bg-gray-800 px-2 py-1 rounded">↑</kbd></td>
                     </tr>
                     <tr class="border-b border-gray-600">
-                        <td class="py-2 font-bold">Braços para Baixo</td>
-                        <td class="py-2">S</td>
-                        <td class="py-2">↓ Baixo</td>
+                        <td class="py-2 px-3 font-bold">Braços para Baixo</td>
+                        <td class="py-2 px-3"><kbd class="bg-gray-800 px-2 py-1 rounded">S</kbd> ou <kbd class="bg-gray-800 px-2 py-1 rounded">↓</kbd></td>
                     </tr>
                     <tr class="border-b border-gray-600">
-                        <td class="py-2 font-bold">Braços para os Lados</td>
-                        <td class="py-2">A</td>
-                        <td class="py-2">← Esquerda</td>
+                        <td class="py-2 px-3 font-bold">Braços para os Lados</td>
+                        <td class="py-2 px-3"><kbd class="bg-gray-800 px-2 py-1 rounded">A</kbd> ou <kbd class="bg-gray-800 px-2 py-1 rounded">←</kbd></td>
                     </tr>
                     <tr>
-                        <td class="py-2 font-bold">Braços Cruzados</td>
-                        <td class="py-2">D</td>
-                        <td class="py-2">→ Direita</td>
+                        <td class="py-2 px-3 font-bold">Braços Cruzados</td>
+                        <td class="py-2 px-3"><kbd class="bg-gray-800 px-2 py-1 rounded">D</kbd> ou <kbd class="bg-gray-800 px-2 py-1 rounded">→</kbd></td>
                     </tr>
                 </tbody>
             </table>
 
-            <h3 class="text-xl font-bold text-white mt-4 mb-2">Ritmo e Pontuação</h3>
-            <p class="text-gray-300">Use a **Barra de Ritmo** no topo como guia. O centro (marcador amarelo) é o ponto de acerto perfeito.</p>
-            <ul class="list-disc list-inside ml-4 mt-2 text-gray-300">
-                <li>**PERFEITO (Verde):** Acerto dentro de ±50ms do centro. (25 pontos + Bónus de Combo).</li>
-                <li>**BOM (Azul):** Acerto dentro de ±150ms do centro. (10 pontos + Bónus de Combo).</li>
+            <h3 class="text-xl font-bold text-green-400 mt-4 mb-2">⏱️ Sistema de Timing</h3>
+            <p class="text-gray-300">Use a <span class="font-bold">Barra de Timing</span> no topo para acertar o momento perfeito:</p>
+            <ul class="list-disc list-inside ml-4 mt-2 text-gray-300 space-y-1">
+                <li><span class="text-green-400 font-bold">EXCELENTE!</span> - Acerto no centro (zona verde): <span class="font-bold">+50 pontos</span></li>
+                <li><span class="text-blue-400 font-bold">BOM!</span> - Acerto nas zonas azuis: <span class="font-bold">+20 pontos</span></li>
+                <li><span class="text-purple-400 font-bold">COMBO</span> - Acertos consecutivos multiplicam os pontos!</li>
             </ul>
-            <p class="text-gray-300 mt-2">Acertos consecutivos aumentam o seu **COMBO** (Streak), multiplicando a sua pontuação. Cada jogador tem o seu próprio combo, mas a pontuação é adicionada ao total.</p>
 
-            <h3 class="text-xl font-bold text-red-400 mt-4 mb-2">Fim de Jogo</h3>
-            <p class="text-gray-300">O jogo termina para **ambos** os jogadores se:</p>
-            <ul class="list-disc list-inside ml-4 mt-2 text-gray-300">
-                <li>**Qualquer jogador** premir a tecla da **pose errada**.</li>
-                <li>**Nenhum dos jogadores** agir a tempo (o Maestro avança para a próxima pose e a pose anterior não foi copiada).</li>
+            <h3 class="text-xl font-bold text-red-400 mt-4 mb-2">❤️ Sistema de Vidas</h3>
+            <p class="text-gray-300">Você começa com <span class="font-bold text-red-400">3 vidas</span>. Perde uma vida se:</p>
+            <ul class="list-disc list-inside ml-4 mt-2 text-gray-300 space-y-1">
+                <li>Pressionar a <span class="font-bold text-red-400">tecla errada</span> (movimento diferente do Maestro)</li>
+                <li>Não pressionar <span class="font-bold text-red-400">nenhuma tecla</span> antes da barra completar</li>
+            </ul>
+            <p class="text-gray-300 mt-2">💀 Quando perder todas as vidas, você pode <span class="font-bold">jogar novamente</span> na mesma sala!</p>
+
+            <h3 class="text-xl font-bold text-purple-400 mt-4 mb-2">🎵 Dificuldade Progressiva</h3>
+            <p class="text-gray-300">O BPM (velocidade) aumenta conforme você pontua. Cada jogador tem sua própria velocidade baseada em seus pontos!</p>
+
+            <h3 class="text-xl font-bold text-yellow-400 mt-4 mb-2">🏆 Modo Multiplayer</h3>
+            <ul class="list-disc list-inside ml-4 mt-2 text-gray-300 space-y-1">
+                <li>Todos veem o <span class="font-bold">mesmo Maestro</span> sincronizado</li>
+                <li>Cada jogador tem suas <span class="font-bold">próprias vidas e pontos</span></li>
+                <li>Veja o <span class="font-bold">ranking em tempo real</span> de todos</li>
+                <li>Medalhas: 🥇 1º lugar, 🥈 2º lugar, 🥉 3º lugar</li>
             </ul>
             
             <div class="flex justify-end mt-6">
                 <button id="close-instructions" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150">
-                    Fechar
+                    Começar a Jogar!
                 </button>
             </div>
         </div>
@@ -246,12 +393,16 @@
         // SECTION 1: GAME CONSTANTS AND CONFIGURATIONS
         // =========================================================
 
-        const START_BPM = 50; 
+        const START_BPM = 60; 
         const BPM_INCREASE_RATE = 5;
-        const SCORE_DIFFICULTY_THRESHOLD = 500;
+        const SCORE_DIFFICULTY_THRESHOLD = 300;
+        const MAX_LIVES = 3;
 
-        const PERFECT_WINDOW = 50; // ±50ms timing accuracy for "PERFECT!"
-        const GOOD_WINDOW = 150;  // ±150ms timing accuracy for "BOM!"
+        const PERFECT_WINDOW = 100; // ±100ms timing accuracy for "EXCELENTE!"
+        const GOOD_WINDOW = 250;  // ±250ms timing accuracy for "BOM!"
+        
+        const PERFECT_SCORE = 50;
+        const GOOD_SCORE = 20;
 
         // Defines the stick figure arm angles (in radians) for each pose.
         // Format: [ElbowL1, ElbowL2, ElbowR1, ElbowR2]
@@ -265,22 +416,19 @@
 
         // Maps input keys to pose definitions
         const POSE_MAPPING = {
-            // Player 1 (Blue - Arrows) - Right Side
-            'ArrowUp': 'UP_ARMS', 'ArrowDown': 'DOWN_ARMS',
-            'ArrowLeft': 'SIDE_ARMS', 'ArrowRight': 'CROSSED_ARMS',
-            // Player 2 (Green - WASD) - Left Side
-            'w': 'UP_ARMS', 's': 'DOWN_ARMS',
-            'a': 'SIDE_ARMS', 'd': 'CROSSED_ARMS',
+            // Both WASD and Arrows
+            'ArrowUp': 'UP_ARMS', 'w': 'UP_ARMS',
+            'ArrowDown': 'DOWN_ARMS', 's': 'DOWN_ARMS',
+            'ArrowLeft': 'SIDE_ARMS', 'a': 'SIDE_ARMS',
+            'ArrowRight': 'CROSSED_ARMS', 'd': 'CROSSED_ARMS',
         };
         const ALL_KEYS = Object.keys(POSE_MAPPING);
-        const PLAYER_1_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
-        const PLAYER_2_KEYS = ['w', 's', 'a', 'd'];
+        const PLAYER_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 's', 'a', 'd'];
         
         // Canvas and Figure positioning
         const canvasWidth = 800;
-        const maestroX = canvasWidth * 0.50; // Center
-        const player2X = canvasWidth * 0.25; // Left (P2 - Green)
-        const player1X = canvasWidth * 0.75; // Right (P1 - Blue)
+        const maestroX = canvasWidth * 0.30; // Left - Maestro
+        const playerX = canvasWidth * 0.70; // Right - Player
         const figureY = 300 * 0.55;
 
         // =========================================================
@@ -291,40 +439,60 @@
         const canvas = document.getElementById('game-canvas');
         const ctx = canvas.getContext('2d');
         const gameContainer = document.getElementById('game-container');
-        const scoreP1Display = document.getElementById('score-p1-display');
-        const scoreP2Display = document.getElementById('score-p2-display');
-        const scoreTotalDisplay = document.getElementById('score-total-display');
+        const scoreDisplay = document.getElementById('score-display');
+        const livesDisplay = document.getElementById('lives-display');
+        const comboDisplay = document.getElementById('combo-display');
         const bpmDisplay = document.getElementById('bpm-display');
         const highScoreDisplay = document.getElementById('high-score-display');
         const feedbackMessage = document.getElementById('feedback-message');
-        const streakCounter = document.getElementById('streak-counter');
         const instructionsModal = document.getElementById('instructions-modal');
         const showInstructionsButton = document.getElementById('show-instructions');
         const closeInstructionsButton = document.getElementById('close-instructions');
-        const rhythmIndicator = document.getElementById('rhythm-indicator'); 
-        const userIdDisplay = document.getElementById('user-id-display');
+        const rhythmIndicator = document.getElementById('rhythm-indicator');
+        
+        // Multiplayer DOM Elements
+        const lobbyScreen = document.getElementById('lobby-screen');
+        const gameInfoBar = document.getElementById('game-info-bar');
+        const playerNameInput = document.getElementById('player-name-input');
+        const roomCodeInput = document.getElementById('room-code-input');
+        const joinRoomBtn = document.getElementById('join-room-btn');
+        const createRoomBtn = document.getElementById('create-room-btn');
+        const leaveRoomBtn = document.getElementById('leave-room-btn');
+        const currentRoomCodeDisplay = document.getElementById('current-room-code');
+        const playersCountDisplay = document.getElementById('players-count');
+        const playersList = document.getElementById('players-list');
+        const startGameContainer = document.getElementById('start-game-container');
+        const startGameBtn = document.getElementById('start-game-btn');
+        const demoModeWarning = document.getElementById('demo-mode-warning');
 
         // --- Game State Variables ---
         let currentBPM = START_BPM;
         let BEAT_INTERVAL = 60000 / currentBPM; 
         
         let maestroPoseKey = 'UP_ARMS';
-        let player1PoseKey = 'UP_ARMS'; // Blue (Arrows)
-        let player2PoseKey = 'UP_ARMS'; // Green (WASD)
+        let playerPoseKey = 'UP_ARMS';
         
-        let scoreP1 = 0;
-        let scoreP2 = 0;
-        let totalScore = 0;
+        let score = 0;
         let highScore = 0;
-        let streakP1 = 0;
-        let streakP2 = 0;
+        let combo = 0;
+        let lives = MAX_LIVES;
         let lastDifficultyScore = 0;
+        let playerHasActed = false;
 
         let gameLoopId = null;
         let lastBeatTime = 0;
         let gameStarted = false;
         let isGameLost = false;
         let nextBeatScheduled = 0;
+
+        // --- Multiplayer State ---
+        let currentRoomCode = null;
+        let currentPlayerId = null;
+        let playerName = '';
+        let roomRef = null;
+        let playersData = {}; // Store all players data
+        let unsubscribeRoom = null;
+        let isMaster = false; // If this player is the room master (controls game state)
 
         // =========================================================
         // SECTION 3: UTILITY FUNCTIONS (UI/MODAL)
@@ -354,10 +522,9 @@
         });
 
         const updateScoreDisplay = () => {
-            totalScore = scoreP1 + scoreP2;
-            scoreP1Display.textContent = scoreP1;
-            scoreP2Display.textContent = scoreP2;
-            scoreTotalDisplay.textContent = totalScore;
+            scoreDisplay.textContent = score;
+            livesDisplay.textContent = lives;
+            comboDisplay.textContent = combo;
             bpmDisplay.textContent = currentBPM;
         };
         
@@ -374,14 +541,7 @@
         };
 
         const updateStreakDisplay = () => {
-            const maxStreak = Math.max(streakP1, streakP2);
-            if (maxStreak > 1) {
-                streakCounter.textContent = `MAX COMBO X${maxStreak}`;
-                streakCounter.style.color = maxStreak >= 10 ? '#facc15' : '#60a5fa';
-                streakCounter.style.opacity = '1';
-            } else {
-                streakCounter.style.opacity = '0';
-            }
+            // Removed - combo is now shown in the header
         };
 
 
@@ -390,10 +550,9 @@
         // =========================================================
 
         const getHighScoreDocRef = () => {
-            if (!window.db || !window.userId || !window.doc) return null;
-            // Path: /artifacts/{appId}/users/{userId}/game_data/maestro_fantoche_coop
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-            const path = `/artifacts/${appId}/users/${window.userId}/game_data/maestro_fantoche_coop`;
+            if (!window.doc) return null;
+            const userId = window.userId || 'demo-user';
+            const path = `users/${userId}/game_data/little_cat_dance`;
             return window.doc(window.db, path);
         };
 
@@ -418,7 +577,7 @@
         };
 
         const saveHighScore = async (newScore) => {
-            if (!window.db || !window.userId || !window.setDoc) return;
+            if (!window.setDoc) return;
 
             if (newScore > highScore) {
                 highScore = newScore;
@@ -427,13 +586,293 @@
                 const docRef = getHighScoreDocRef();
                 if (docRef) {
                     try {
-                        await window.setDoc(docRef, { highScore: newScore, updated: new Date().toISOString() }, { merge: true });
-                        showFeedback('NOVO RECORDE GLOBAL!', 'text-yellow-400');
+                        await window.setDoc(docRef, { 
+                            highScore: newScore, 
+                            updated: new Date().toISOString() 
+                        }, { merge: true });
+                        showFeedback('🏆 NOVO RECORDE! 🏆', 'text-yellow-400', 2000);
                     } catch (e) {
                         console.error("Error saving high score:", e);
                     }
                 }
             }
+        };
+
+        // =========================================================
+        // SECTION 4.5: MULTIPLAYER ROOM MANAGEMENT
+        // =========================================================
+
+        const generateRoomCode = () => {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            let code = '';
+            for (let i = 0; i < 6; i++) {
+                code += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return code;
+        };
+
+        const createRoom = async () => {
+            if (!window.doc || !window.setDoc) {
+                alert('Sistema de salas não disponível no momento. Tente recarregar a página.');
+                return;
+            }
+
+            const name = playerNameInput.value.trim() || 'Jogador';
+            if (name.length === 0) {
+                alert('Por favor, digite seu nome!');
+                return;
+            }
+
+            const roomCode = generateRoomCode();
+            currentRoomCode = roomCode;
+            currentPlayerId = window.userId || crypto.randomUUID();
+            playerName = name;
+            isMaster = true;
+
+            try {
+                // Create room document
+                roomRef = window.doc(window.db, `game_rooms/${roomCode}`);
+                
+                const roomData = {
+                    code: roomCode,
+                    created: Date.now(),
+                    masterId: currentPlayerId,
+                    gameState: {
+                        started: false,
+                        maestroPose: 'UP_ARMS',
+                        currentBPM: START_BPM,
+                        beatTime: 0,
+                        beatInterval: 60000 / START_BPM
+                    },
+                    players: {
+                        [currentPlayerId]: {
+                            name: playerName,
+                            score: 0,
+                            lives: MAX_LIVES,
+                            combo: 0,
+                            pose: 'UP_ARMS',
+                            isAlive: true,
+                            lastUpdate: Date.now()
+                        }
+                    }
+                };
+
+                await window.setDoc(roomRef, roomData);
+                joinedRoom(roomCode);
+            } catch (e) {
+                console.error('Error creating room:', e);
+                alert('Erro ao criar sala. Tente novamente.');
+            }
+        };
+
+        const joinRoom = async () => {
+            if (!window.doc || !window.getDoc || !window.setDoc) {
+                alert('Sistema de salas não disponível no momento. Tente recarregar a página.');
+                return;
+            }
+
+            const roomCode = roomCodeInput.value.trim().toUpperCase();
+            const name = playerNameInput.value.trim() || 'Jogador';
+
+            if (roomCode.length !== 6) {
+                alert('Por favor, digite um código de sala válido (6 caracteres)!');
+                return;
+            }
+
+            if (name.length === 0) {
+                alert('Por favor, digite seu nome!');
+                return;
+            }
+
+            try {
+                roomRef = window.doc(window.db, `game_rooms/${roomCode}`);
+                
+                const roomSnap = await window.getDoc(roomRef);
+                
+                if (!roomSnap.exists()) {
+                    alert('Sala não encontrada! Verifique o código.');
+                    return;
+                }
+
+                currentRoomCode = roomCode;
+                currentPlayerId = window.userId || crypto.randomUUID();
+                playerName = name;
+                isMaster = false;
+
+                // Add player to room
+                const roomData = roomSnap.data();
+                roomData.players = roomData.players || {};
+                roomData.players[currentPlayerId] = {
+                    name: playerName,
+                    score: 0,
+                    lives: MAX_LIVES,
+                    combo: 0,
+                    pose: 'UP_ARMS',
+                    isAlive: true,
+                    lastUpdate: Date.now()
+                };
+
+                await window.setDoc(roomRef, roomData, { merge: true });
+                joinedRoom(roomCode);
+            } catch (e) {
+                console.error('Error joining room:', e);
+                alert('Erro ao entrar na sala. Tente novamente.');
+            }
+        };
+
+        const joinedRoom = (roomCode) => {
+            currentRoomCodeDisplay.textContent = roomCode;
+            lobbyScreen.classList.add('hidden');
+            gameInfoBar.classList.remove('hidden');
+            startGameContainer.classList.remove('hidden');
+
+            // Listen to room changes
+            if (unsubscribeRoom) unsubscribeRoom();
+            
+            unsubscribeRoom = window.onSnapshot(roomRef, (snapshot) => {
+                if (!snapshot.exists()) {
+                    leaveRoom();
+                    alert('A sala foi fechada.');
+                    return;
+                }
+
+                const roomData = snapshot.data();
+                playersData = roomData.players || {};
+                
+                // Update players list UI
+                updatePlayersListUI();
+
+                // Sync game state if not master
+                if (!isMaster && roomData.gameState) {
+                    const gs = roomData.gameState;
+                    if (gs.started && !gameStarted) {
+                        startGame();
+                    }
+                    maestroPoseKey = gs.maestroPose || 'UP_ARMS';
+                    currentBPM = gs.currentBPM || START_BPM;
+                    BEAT_INTERVAL = gs.beatInterval || (60000 / START_BPM);
+                    lastBeatTime = gs.beatTime || performance.now();
+                }
+            });
+
+            showFeedback('🎮 Conectado à sala!', 'text-green-400', 2000);
+            
+            // Update canvas
+            ctx.fillStyle = '#374151';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#fcd34d';
+            ctx.font = 'bold 30px Inter';
+            ctx.textAlign = 'center';
+            ctx.fillText('✅ Conectado!', canvas.width / 2, canvas.height / 2 - 20);
+            ctx.font = '20px Inter';
+            ctx.fillStyle = '#d1d5db';
+            ctx.fillText('Pressione qualquer tecla para começar', canvas.width / 2, canvas.height / 2 + 20);
+        };
+
+        const updatePlayersListUI = () => {
+            const players = Object.entries(playersData);
+            playersCountDisplay.textContent = players.length;
+
+            // Sort by score
+            players.sort((a, b) => b[1].score - a[1].score);
+
+            playersList.innerHTML = players.map(([id, player], index) => {
+                const isYou = id === currentPlayerId;
+                const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '';
+                const aliveStatus = player.isAlive ? '✅' : '💀';
+                
+                return `
+                    <div class="flex justify-between items-center p-3 bg-gray-${isYou ? '600' : '700'} rounded ${isYou ? 'border-2 border-yellow-400' : ''}">
+                        <div class="flex items-center gap-3">
+                            <span class="text-2xl">${medal || aliveStatus}</span>
+                            <span class="font-bold ${isYou ? 'text-yellow-300' : 'text-white'}">${player.name}${isYou ? ' (VOCÊ)' : ''}</span>
+                        </div>
+                        <div class="flex gap-6 items-center text-sm">
+                            <span class="text-yellow-400">⭐ ${player.score}</span>
+                            <span class="text-red-400">❤️ ${player.lives}</span>
+                            <span class="text-purple-400">🔥 ${player.combo}x</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        };
+
+        const updatePlayerState = async () => {
+            if (!roomRef || !currentPlayerId) return;
+
+            try {
+                const playerUpdate = {
+                    [`players.${currentPlayerId}`]: {
+                        name: playerName,
+                        score: score,
+                        lives: lives,
+                        combo: combo,
+                        pose: playerPoseKey,
+                        isAlive: lives > 0,
+                        lastUpdate: Date.now()
+                    }
+                };
+
+                await window.setDoc(roomRef, playerUpdate, { merge: true });
+            } catch (e) {
+                console.error('Error updating player state:', e);
+            }
+        };
+
+        const updateGameState = async () => {
+            if (!isMaster || !roomRef) return;
+
+            try {
+                const gameStateUpdate = {
+                    'gameState.started': gameStarted,
+                    'gameState.maestroPose': maestroPoseKey,
+                    'gameState.currentBPM': currentBPM,
+                    'gameState.beatTime': lastBeatTime,
+                    'gameState.beatInterval': BEAT_INTERVAL
+                };
+
+                await window.setDoc(roomRef, gameStateUpdate, { merge: true });
+            } catch (e) {
+                console.error('Error updating game state:', e);
+            }
+        };
+
+        const leaveRoom = () => {
+            if (unsubscribeRoom) {
+                unsubscribeRoom();
+                unsubscribeRoom = null;
+            }
+
+            currentRoomCode = null;
+            currentPlayerId = null;
+            isMaster = false;
+            roomRef = null;
+            playersData = {};
+
+            lobbyScreen.classList.remove('hidden');
+            gameInfoBar.classList.add('hidden');
+            startGameContainer.classList.add('hidden');
+
+            if (gameStarted) {
+                cancelAnimationFrame(gameLoopId);
+                gameStarted = false;
+            }
+
+            showFeedback('👋 Você saiu da sala', 'text-gray-400', 2000);
+            
+            // Reset canvas
+            ctx.fillStyle = '#374151';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#fcd34d';
+            ctx.font = 'bold 35px Inter';
+            ctx.textAlign = 'center';
+            ctx.fillText('🎵 LITTLE CAT DANCE 🎵', canvas.width / 2, canvas.height / 2 - 60);
+            ctx.font = '22px Inter';
+            ctx.fillStyle = '#d1d5db';
+            ctx.fillText('Modo Multiplayer Online', canvas.width / 2, canvas.height / 2 - 20);
+            ctx.fillStyle = '#fbbf24';
+            ctx.font = 'bold 18px Inter';
+            ctx.fillText('👆 Crie ou entre em uma sala acima', canvas.width / 2, canvas.height / 2 + 30);
         };
 
         // =========================================================
@@ -517,14 +956,11 @@
         const calculateBeatInterval = () => 60000 / currentBPM;
 
         const increaseDifficulty = () => {
-            if (totalScore - lastDifficultyScore >= SCORE_DIFFICULTY_THRESHOLD) {
+            if (score - lastDifficultyScore >= SCORE_DIFFICULTY_THRESHOLD) {
                 currentBPM += BPM_INCREASE_RATE;
-                lastDifficultyScore = totalScore;
-                
-                // Recalculate beat interval
+                lastDifficultyScore = score;
                 BEAT_INTERVAL = calculateBeatInterval();
-                
-                showFeedback(`VELOCIDADE: ${currentBPM} BPM!`, 'text-yellow-300', 1000);
+                showFeedback(`⚡ ${currentBPM} BPM! ⚡`, 'text-yellow-300', 1000);
             }
         };
 
@@ -539,41 +975,74 @@
         };
 
         const processBeat = (timestamp) => {
-            // 1. Check if the players failed the previous beat (by not hitting in time)
             const timeSinceLastBeat = timestamp - lastBeatTime;
-            const player1Hit = player1PoseKey === maestroPoseKey;
-            const player2Hit = player2PoseKey === maestroPoseKey;
 
-            // If time exceeds the grace window AND neither player hit the pose
-            if (timeSinceLastBeat > BEAT_INTERVAL + GOOD_WINDOW && (!player1Hit || !player2Hit)) {
-                 endGame();
-                 return;
+            // Check if beat time exceeded and player hasn't acted - LOSE LIFE
+            if (timeSinceLastBeat > BEAT_INTERVAL && !playerHasActed) {
+                loseLife('⏰ MUITO LENTO!');
+                generateNewBeat(timestamp);
+                return;
             }
 
-            // 2. Schedule the next beat (Maestro pose change)
+            // Schedule next beat
             if (timestamp >= nextBeatScheduled) {
-                // Reset player poses to force action on the new beat
-                player1PoseKey = POSE_DEFINITION_KEYS[0]; 
-                player2PoseKey = POSE_DEFINITION_KEYS[0];
+                generateNewBeat(timestamp);
+            }
+        };
 
-                lastBeatTime = timestamp;
-                nextBeatScheduled += BEAT_INTERVAL;
-                generateNewPose(); // Generate a new pose for the Maestro
+        const generateNewBeat = (timestamp) => {
+            playerHasActed = false; // Reset for new beat
+            lastBeatTime = timestamp;
+            nextBeatScheduled = timestamp + BEAT_INTERVAL;
+            generateNewPose();
+            
+            // Sync with other players if master
+            if (isMaster) {
+                updateGameState();
+            }
+        };
+
+        const loseLife = (message) => {
+            lives--;
+            combo = 0;
+            updateScoreDisplay();
+            showFeedback(message, 'text-red-500', 1000);
+            
+            gameContainer.classList.add('pulse-wrong');
+            setTimeout(() => gameContainer.classList.remove('pulse-wrong'), 400);
+
+            if (lives <= 0) {
+                endGame();
             }
         };
 
         const calculateTiming = (timestamp) => {
             const timeDiff = timestamp - lastBeatTime;
-            const deviation = Math.abs(timeDiff - BEAT_INTERVAL);
+            const normalizedProgress = timeDiff / BEAT_INTERVAL;
+            const deviation = Math.abs(normalizedProgress - 0.5) * BEAT_INTERVAL;
 
-            if (timeDiff < BEAT_INTERVAL - GOOD_WINDOW) { return { hit: false, msg: 'MUITO CEDO', score: 0 }; }
-            
             if (deviation <= PERFECT_WINDOW) {
-                return { hit: true, msg: 'PERFEITO!', score: 25, color: 'text-green-500', pulse: 'pulse-perfect' };
+                return { 
+                    hit: true, 
+                    msg: '⭐ EXCELENTE! ⭐', 
+                    score: PERFECT_SCORE, 
+                    color: 'text-green-400', 
+                    pulse: 'pulse-perfect' 
+                };
             } else if (deviation <= GOOD_WINDOW) {
-                return { hit: true, msg: 'BOM!', score: 10, color: 'text-blue-500', pulse: 'pulse-perfect' };
+                return { 
+                    hit: true, 
+                    msg: '👍 BOM! 👍', 
+                    score: GOOD_SCORE, 
+                    color: 'text-blue-400', 
+                    pulse: 'pulse-perfect' 
+                };
             } else {
-                return { hit: false, msg: 'MUITO TARDE', score: 0 };
+                return { 
+                    hit: false, 
+                    msg: '❌ ERROU! ❌', 
+                    score: 0 
+                };
             }
         };
 
@@ -585,80 +1054,57 @@
         const handleInput = (key) => {
             if (instructionsModal.style.display === 'flex') return;
             if (!gameStarted || isGameLost) return;
+            if (playerHasActed) return; // Only one action per beat
 
             const poseToMatch = POSE_MAPPING[key];
-            const isPlayer1 = PLAYER_1_KEYS.includes(key);
-            const isPlayer2 = PLAYER_2_KEYS.includes(key);
-
             if (!poseToMatch) return;
 
+            playerHasActed = true; // Mark that player acted this beat
             const timestamp = performance.now();
-            const timing = calculateTiming(timestamp);
             const isCorrectPose = poseToMatch === maestroPoseKey;
 
-            // GAME OVER: Wrong Pose (for any player)
+            // WRONG POSE - Lose life
             if (!isCorrectPose) {
-                scoreP1 = Math.max(0, scoreP1 - 5);
-                scoreP2 = Math.max(0, scoreP2 - 5);
-                endGame();
+                playerPoseKey = poseToMatch; // Update visual
+                loseLife('❌ MOVIMENTO ERRADO!');
+                updatePlayerState(); // Sync with server
                 return;
             }
-            
-            // Correct Pose
-            let playerStreak, playerCurrentScore;
 
-            if (isPlayer1) {
-                player1PoseKey = poseToMatch;
-                playerStreak = streakP1;
-                playerCurrentScore = scoreP1;
-            } else if (isPlayer2) {
-                player2PoseKey = poseToMatch;
-                playerStreak = streakP2;
-                playerCurrentScore = scoreP2;
-            } else {
-                return;
-            }
+            // CORRECT POSE - Check timing
+            playerPoseKey = poseToMatch;
+            const timing = calculateTiming(timestamp);
 
             if (timing.hit) {
-                // Correct Pose AND Correct Timing (Hit)
-                playerStreak++;
-                playerCurrentScore += timing.score + (playerStreak > 1 ? playerStreak : 0);
-                showFeedback(timing.msg, timing.color);
-
-                // Apply visual hit effect
+                // Good or Perfect timing
+                combo++;
+                const comboBonus = combo > 1 ? Math.floor(combo * 0.5) : 0;
+                const totalPoints = timing.score + comboBonus;
+                score += totalPoints;
+                
+                showFeedback(timing.msg + (combo > 1 ? ` COMBO x${combo}` : ''), timing.color);
                 gameContainer.classList.add(timing.pulse);
                 setTimeout(() => gameContainer.classList.remove(timing.pulse), 400);
-
+                
+                increaseDifficulty();
             } else {
-                // Correct Pose BUT Wrong Timing (Miss)
-                playerStreak = 0;
-                showFeedback(timing.msg, 'text-red-400');
+                // Correct pose but bad timing - Lose life
+                loseLife(timing.msg);
             }
 
-            // Update player state
-            if (isPlayer1) {
-                streakP1 = playerStreak;
-                scoreP1 = playerCurrentScore;
-            } else {
-                streakP2 = playerStreak;
-                scoreP2 = playerCurrentScore;
-            }
-            
-            increaseDifficulty();
             updateScoreDisplay();
-            updateStreakDisplay();
+            updatePlayerState(); // Sync with server
         };
 
         const handleKeyPress = (event) => {
-            let inputKey = event.key;
+            let inputKey = event.key.toLowerCase();
             
-            // Convert P2 keys (WASD) to lowercase for mapping consistency
-            if (PLAYER_2_KEYS.includes(inputKey.toLowerCase())) {
-                inputKey = inputKey.toLowerCase();
+            // Normalize arrow keys
+            if (event.key.startsWith('Arrow')) {
+                inputKey = event.key;
             }
-            // P1 keys (Arrows) are case-sensitive strings: 'ArrowUp', 'ArrowDown', etc.
 
-            if (!POSE_MAPPING[inputKey]) return; 
+            if (!POSE_MAPPING[inputKey]) return;
 
             if (instructionsModal.style.display === 'flex') {
                 if (event.key === 'Escape') closeInstructions();
@@ -669,11 +1115,11 @@
             if (event.repeat) return;
             
             // Visual feedback for button press
-            const button = document.querySelector(`.key-button[data-key="${inputKey}"]`);
+            const button = document.querySelector(`.key-button[data-key="${inputKey}"]`) || 
+                          document.querySelector(`.key-button[data-key="${inputKey.toLowerCase()}"]`);
             if (button) {
-                const color = PLAYER_1_KEYS.includes(inputKey) ? 'blue' : 'green';
-                button.classList.add(`!bg-${color}-400`);
-                setTimeout(() => button.classList.remove(`!bg-${color}-400`), 100);
+                button.classList.add('!bg-yellow-400');
+                setTimeout(() => button.classList.remove('!bg-yellow-400'), 150);
             }
             
             if (!gameStarted && !isGameLost) {
@@ -694,21 +1140,29 @@
 
         const startGame = () => {
             if (gameStarted) return;
+            if (!currentRoomCode) {
+                alert('Você precisa estar em uma sala para jogar!');
+                return;
+            }
+            
             gameStarted = true;
             isGameLost = false;
+            startGameContainer.classList.add('hidden');
             
             // Reset state
             currentBPM = START_BPM;
             BEAT_INTERVAL = calculateBeatInterval();
-            scoreP1 = 0; scoreP2 = 0; totalScore = 0;
-            streakP1 = 0; streakP2 = 0; lastDifficultyScore = 0;
+            score = 0;
+            combo = 0;
+            lives = MAX_LIVES;
+            lastDifficultyScore = 0;
+            playerHasActed = false;
 
             updateScoreDisplay();
             lastBeatTime = performance.now();
             nextBeatScheduled = lastBeatTime + BEAT_INTERVAL;
             maestroPoseKey = POSE_DEFINITION_KEYS[0]; 
-            player1PoseKey = POSE_DEFINITION_KEYS[0];
-            player2PoseKey = POSE_DEFINITION_KEYS[0];
+            playerPoseKey = POSE_DEFINITION_KEYS[0];
 
             // Add input listeners
             document.addEventListener('keydown', handleKeyPress);
@@ -717,7 +1171,13 @@
             });
 
             gameLoopId = requestAnimationFrame(gameLoop);
-            showFeedback('VAMOS LÁ CO-OP!', 'text-yellow-300');
+            showFeedback('🎵 VAMOS LÁ! 🎵', 'text-yellow-300', 1500);
+            
+            // Sync if master
+            if (isMaster) {
+                updateGameState();
+            }
+            updatePlayerState();
         };
 
         const endGame = () => {
@@ -726,16 +1186,23 @@
             isGameLost = true;
             document.removeEventListener('keydown', handleKeyPress);
             
-            saveHighScore(totalScore);
-            showFeedback('FIM DE JOGO!', 'text-red-500', 3000);
+            saveHighScore(score);
+            updatePlayerState(); // Final update
+            showFeedback('💀 GAME OVER! 💀', 'text-red-500', 3000);
             
-            // Display restart message on canvas
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            // Display game over message on canvas
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = 'white';
-            ctx.font = '30px Inter';
+            ctx.font = 'bold 40px Inter';
             ctx.textAlign = 'center';
-            ctx.fillText('Pressione qualquer tecla para Reiniciar', canvas.width / 2, canvas.height / 2);
+            ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 40);
+            ctx.font = '25px Inter';
+            ctx.fillStyle = '#fcd34d';
+            ctx.fillText(`Sua Pontuação: ${score}`, canvas.width / 2, canvas.height / 2 + 10);
+            ctx.font = '20px Inter';
+            ctx.fillStyle = '#d1d5db';
+            ctx.fillText('Pressione qualquer tecla para Jogar Novamente', canvas.width / 2, canvas.height / 2 + 60);
             
             // Restart listeners
             document.addEventListener('keydown', handleRestart, { once: true });
@@ -746,8 +1213,9 @@
             // Remove restart listeners before starting
             document.removeEventListener('keydown', handleRestart);
             gameContainer.removeEventListener('click', handleRestart);
-            startGame();
-        }
+            startGameContainer.classList.remove('hidden');
+            isGameLost = false;
+        };
 
         // =========================================================
         // SECTION 8: MAIN GAME LOOP AND INITIALIZATION
@@ -760,35 +1228,25 @@
                 return;
             }
 
-            // 1. Process Beat (updates Maestro pose if it's time)
+            // 1. Process Beat
             processBeat(timestamp);
 
             // 2. Clear Canvas
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // 3. Draw Figures (P2 left, Maestro center, P1 right)
+            // 3. Draw Figures (Maestro left, Player right)
             const maestroAngles = POSE_DEFINITIONS[maestroPoseKey].arms;
-            const p1Angles = POSE_DEFINITIONS[player1PoseKey].arms; 
-            const p2Angles = POSE_DEFINITIONS[player2PoseKey].arms;
+            const playerAngles = POSE_DEFINITIONS[playerPoseKey].arms;
             
-            drawFigure(player2X, '#10b981', p2Angles, "P2 (WASD)", '#34d399'); // Green (Left)
-            drawFigure(maestroX, '#f97316', maestroAngles, "Maestro", '#fcd34d'); // Orange (Center)
-            drawFigure(player1X, '#3b82f6', p1Angles, "P1 (Setas)", '#60a5fa'); // Blue (Right)
+            drawFigure(maestroX, '#f97316', maestroAngles, "🎵 MAESTRO", '#fcd34d'); // Orange (Left)
+            drawFigure(playerX, '#3b82f6', playerAngles, "👤 VOCÊ", '#60a5fa'); // Blue (Right)
 
-            // 4. Update Rhythm Indicator
+            // 4. Update Rhythm Indicator (progress bar)
             const timeElapsed = timestamp - lastBeatTime;
             let progress = Math.min(1, timeElapsed / BEAT_INTERVAL);
             
             let indicatorWidth = progress * 100;
             rhythmIndicator.style.width = `${indicatorWidth}%`;
-            
-            if (progress < 0.3 || progress > 0.7) {
-                 rhythmIndicator.style.backgroundColor = '#ef4444'; // Red
-            } else if (progress < 0.45 || progress > 0.55) {
-                 rhythmIndicator.style.backgroundColor = '#3b82f6'; // Blue
-            } else {
-                 rhythmIndicator.style.backgroundColor = '#22c55e'; // Green
-            }
 
             // 5. Next iteration
             gameLoopId = requestAnimationFrame(gameLoop);
@@ -800,26 +1258,60 @@
                 if (window.isAuthReady) {
                     clearInterval(checkAuthReady);
                     
-                    // Display user ID
-                    userIdDisplay.textContent = 'ID: ' + (window.userId ? window.userId.substring(0, 8) + '...' : 'Anónimo');
-                    
                     loadHighScore();
+                    updateScoreDisplay();
                     
-                    // Initial message on canvas
-                    ctx.fillStyle = 'gray';
-                    ctx.font = '30px Inter';
-                    ctx.textAlign = 'center';
-                    ctx.fillText('Pressione qualquer tecla ou botão para Começar', canvas.width / 2, canvas.height / 2);
+                    // Check if in demo mode and show warning
+                    const DEMO_MODE = true; // Must match the value in Firebase config
+                    if (DEMO_MODE && demoModeWarning) {
+                        demoModeWarning.classList.remove('hidden');
+                    }
                     
-                    // Start listeners
-                    const startHandler = (e) => {
-                        if (!gameStarted && !isGameLost) {
+                    // Multiplayer event listeners
+                    createRoomBtn.addEventListener('click', createRoom);
+                    joinRoomBtn.addEventListener('click', joinRoom);
+                    leaveRoomBtn.addEventListener('click', leaveRoom);
+                    
+                    // Start game button
+                    startGameBtn.addEventListener('click', startGame);
+                    
+                    // Allow keyboard shortcuts in room
+                    document.addEventListener('keydown', (e) => {
+                        if (!gameStarted && !isGameLost && currentRoomCode && e.key !== 'Escape') {
                             startGame();
                         }
-                    };
-
-                    document.addEventListener('keydown', startHandler, { once: true });
-                    gameContainer.addEventListener('click', startHandler, { once: true });
+                    });
+                    
+                    // Allow Enter key to join room
+                    roomCodeInput.addEventListener('keypress', (e) => {
+                        if (e.key === 'Enter') joinRoom();
+                    });
+                    playerNameInput.addEventListener('keypress', (e) => {
+                        if (e.key === 'Enter') {
+                            if (roomCodeInput.value.trim()) {
+                                joinRoom();
+                            } else {
+                                createRoom();
+                            }
+                        }
+                    });
+                    
+                    // Initial message on canvas
+                    ctx.fillStyle = '#374151';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = '#fcd34d';
+                    ctx.font = 'bold 35px Inter';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('🎵 LITTLE CAT DANCE 🎵', canvas.width / 2, canvas.height / 2 - 60);
+                    ctx.font = '22px Inter';
+                    ctx.fillStyle = '#d1d5db';
+                    ctx.fillText('Modo Multiplayer Online', canvas.width / 2, canvas.height / 2 - 20);
+                    ctx.fillStyle = '#fbbf24';
+                    ctx.font = 'bold 18px Inter';
+                    ctx.fillText('👆 Crie ou entre em uma sala acima', canvas.width / 2, canvas.height / 2 + 30);
+                    ctx.fillStyle = '#9ca3af';
+                    ctx.font = '16px Inter';
+                    ctx.fillText('Compartilhe o código com seus amigos!', canvas.width / 2, canvas.height / 2 + 60);
                 }
             }, 100);
         };
