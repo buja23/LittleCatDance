@@ -38,7 +38,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Global Firebase variables exposed to the window object
         window.db = null;
@@ -50,6 +50,7 @@
         window.doc = doc;
         window.getDoc = getDoc;
         window.setDoc = setDoc;
+        window.updateDoc = updateDoc;
         window.onSnapshot = onSnapshot;
         window.serverTimestamp = serverTimestamp;
 
@@ -59,17 +60,17 @@
         // 2. Crie um projeto (ou use um existente)
         // 3. Vá em "Configurações do Projeto" > "Geral"
         // 4. Role até "Seus apps" > "SDK do Firebase" > "Config"
-        const firebaseConfig = {
-            apiKey: "AIzaSyDEMOKEY-REPLACE-WITH-YOUR-KEY",
-            authDomain: "your-project.firebaseapp.com",
-            projectId: "your-project-id",
-            storageBucket: "your-project.appspot.com",
-            messagingSenderId: "123456789",
-            appId: "1:123456789:web:abcdef123456"
-        };
+       const firebaseConfig = {
+  apiKey: "AIzaSyBgEE3mwZRe1bcLVibTOhG89FlmXEVPjdQ",
+  authDomain: "littlecatdance-1c417.firebaseapp.com",
+  projectId: "littlecatdance-1c417",
+  storageBucket: "littlecatdance-1c417.firebasestorage.app",
+  messagingSenderId: "614574691815",
+  appId: "1:614574691815:web:f2eca1fc882c19159bd942"
+};
 
         // MODO DEMO (sem Firebase real - apenas local)
-        const DEMO_MODE = true; // Mude para false quando tiver Firebase configurado
+        const DEMO_MODE = false; // Mude para false quando tiver Firebase configurado
 
         try {
             if (!DEMO_MODE) {
@@ -115,6 +116,34 @@
                     } else {
                         window.demoDatabase[docRef.path] = data;
                     }
+                    // Notifica listeners
+                    if (window.demoListeners[docRef.path]) {
+                        window.demoListeners[docRef.path].forEach(callback => {
+                            callback({
+                                exists: () => true,
+                                data: () => window.demoDatabase[docRef.path]
+                            });
+                        });
+                    }
+                };
+                
+                window.updateDoc = async (docRef, updates) => {
+                    // Update nested fields using dot notation
+                    const currentData = window.demoDatabase[docRef.path] || {};
+                    const updatedData = { ...currentData };
+                    
+                    for (const [key, value] of Object.entries(updates)) {
+                        const keys = key.split('.');
+                        let obj = updatedData;
+                        for (let i = 0; i < keys.length - 1; i++) {
+                            if (!obj[keys[i]]) obj[keys[i]] = {};
+                            obj = obj[keys[i]];
+                        }
+                        obj[keys[keys.length - 1]] = value;
+                    }
+                    
+                    window.demoDatabase[docRef.path] = updatedData;
+                    
                     // Notifica listeners
                     if (window.demoListeners[docRef.path]) {
                         window.demoListeners[docRef.path].forEach(callback => {
@@ -266,7 +295,7 @@
                 <button id="start-game-btn" class="px-8 py-3 bg-green-600 hover:bg-green-700 text-white font-bold text-xl rounded-lg transition shadow-lg">
                     🎮 Começar a Jogar!
                 </button>
-                <p class="text-sm text-gray-400 mt-2">Pressione qualquer tecla ou clique no botão</p>
+                <p class="text-sm text-gray-400 mt-2" id="start-game-hint">Pressione ESPAÇO ou clique no botão</p>
             </div>
 
             <!-- Feedback Message -->
@@ -625,7 +654,7 @@
 
             const roomCode = generateRoomCode();
             currentRoomCode = roomCode;
-            currentPlayerId = window.userId || crypto.randomUUID();
+            currentPlayerId = crypto.randomUUID(); // Unique ID per session/tab
             playerName = name;
             isMaster = true;
 
@@ -695,24 +724,30 @@
                 }
 
                 currentRoomCode = roomCode;
-                currentPlayerId = window.userId || crypto.randomUUID();
+                currentPlayerId = crypto.randomUUID(); // Unique ID per session/tab
                 playerName = name;
                 isMaster = false;
 
-                // Add player to room
-                const roomData = roomSnap.data();
-                roomData.players = roomData.players || {};
-                roomData.players[currentPlayerId] = {
-                    name: playerName,
-                    score: 0,
-                    lives: MAX_LIVES,
-                    combo: 0,
-                    pose: 'UP_ARMS',
-                    isAlive: true,
-                    lastUpdate: Date.now()
+                // Get current room data first
+                const currentRoomData = roomSnap.data();
+                
+                // Add player to existing players object
+                const updatedPlayers = {
+                    ...currentRoomData.players,
+                    [currentPlayerId]: {
+                        name: playerName,
+                        score: 0,
+                        lives: MAX_LIVES,
+                        combo: 0,
+                        pose: 'UP_ARMS',
+                        isAlive: true,
+                        lastUpdate: Date.now()
+                    }
                 };
-
-                await window.setDoc(roomRef, roomData, { merge: true });
+                
+                // Update the entire players object
+                await window.setDoc(roomRef, { players: updatedPlayers }, { merge: true });
+                
                 joinedRoom(roomCode);
             } catch (e) {
                 console.error('Error joining room:', e);
@@ -724,7 +759,14 @@
             currentRoomCodeDisplay.textContent = roomCode;
             lobbyScreen.classList.add('hidden');
             gameInfoBar.classList.remove('hidden');
-            startGameContainer.classList.remove('hidden');
+            
+            // Show start game controls only for the host/master
+            if (isMaster) {
+                startGameContainer.classList.remove('hidden');
+                document.getElementById('start-game-hint').textContent = 'Pressione ESPAÇO ou clique no botão';
+            } else {
+                startGameContainer.classList.add('hidden');
+            }
 
             // Listen to room changes
             if (unsubscribeRoom) unsubscribeRoom();
@@ -739,12 +781,13 @@
                 const roomData = snapshot.data();
                 playersData = roomData.players || {};
                 
-                // Update players list UI
+                // Update players list UI (this updates the scoreboard)
                 updatePlayersListUI();
 
                 // Sync game state if not master
                 if (!isMaster && roomData.gameState) {
                     const gs = roomData.gameState;
+                    
                     if (gs.started && !gameStarted) {
                         startGame();
                     }
@@ -766,7 +809,11 @@
             ctx.fillText('✅ Conectado!', canvas.width / 2, canvas.height / 2 - 20);
             ctx.font = '20px Inter';
             ctx.fillStyle = '#d1d5db';
-            ctx.fillText('Pressione qualquer tecla para começar', canvas.width / 2, canvas.height / 2 + 20);
+            if (isMaster) {
+                ctx.fillText('Pressione ESPAÇO para começar', canvas.width / 2, canvas.height / 2 + 20);
+            } else {
+                ctx.fillText('Aguardando o host iniciar o jogo...', canvas.width / 2, canvas.height / 2 + 20);
+            }
         };
 
         const updatePlayersListUI = () => {
@@ -801,19 +848,18 @@
             if (!roomRef || !currentPlayerId) return;
 
             try {
-                const playerUpdate = {
-                    [`players.${currentPlayerId}`]: {
-                        name: playerName,
-                        score: score,
-                        lives: lives,
-                        combo: combo,
-                        pose: playerPoseKey,
-                        isAlive: lives > 0,
-                        lastUpdate: Date.now()
-                    }
-                };
+                // Use updateDoc with field path to update only this player's data
+                // This prevents race conditions with other players
+                const updates = {};
+                updates[`players.${currentPlayerId}.name`] = playerName;
+                updates[`players.${currentPlayerId}.score`] = score;
+                updates[`players.${currentPlayerId}.lives`] = lives;
+                updates[`players.${currentPlayerId}.combo`] = combo;
+                updates[`players.${currentPlayerId}.pose`] = playerPoseKey;
+                updates[`players.${currentPlayerId}.isAlive`] = lives > 0;
+                updates[`players.${currentPlayerId}.lastUpdate`] = Date.now();
 
-                await window.setDoc(roomRef, playerUpdate, { merge: true });
+                await window.updateDoc(roomRef, updates);
             } catch (e) {
                 console.error('Error updating player state:', e);
             }
@@ -823,7 +869,8 @@
             if (!isMaster || !roomRef) return;
 
             try {
-                const gameStateUpdate = {
+                // Use updateDoc to update only game state fields
+                const updates = {
                     'gameState.started': gameStarted,
                     'gameState.maestroPose': maestroPoseKey,
                     'gameState.currentBPM': currentBPM,
@@ -831,7 +878,7 @@
                     'gameState.beatInterval': BEAT_INTERVAL
                 };
 
-                await window.setDoc(roomRef, gameStateUpdate, { merge: true });
+                await window.updateDoc(roomRef, updates);
             } catch (e) {
                 console.error('Error updating game state:', e);
             }
@@ -965,6 +1012,9 @@
         };
 
         const generateNewPose = () => {
+            // Only master/host generates new poses
+            if (!isMaster) return;
+            
             let newPoseKey;
             do {
                 const randomIndex = Math.floor(Math.random() * POSE_DEFINITION_KEYS.length);
@@ -994,10 +1044,11 @@
             playerHasActed = false; // Reset for new beat
             lastBeatTime = timestamp;
             nextBeatScheduled = timestamp + BEAT_INTERVAL;
-            generateNewPose();
             
-            // Sync with other players if master
+            // Generate new pose (only for master)
             if (isMaster) {
+                generateNewPose();
+                // Sync immediately with other players
                 updateGameState();
             }
         };
@@ -1149,14 +1200,22 @@
             isGameLost = false;
             startGameContainer.classList.add('hidden');
             
-            // Reset state
-            currentBPM = START_BPM;
-            BEAT_INTERVAL = calculateBeatInterval();
-            score = 0;
-            combo = 0;
-            lives = MAX_LIVES;
-            lastDifficultyScore = 0;
-            playerHasActed = false;
+            // Reset state only for master (host starts fresh)
+            // Non-master players keep their current state
+            if (isMaster) {
+                currentBPM = START_BPM;
+                BEAT_INTERVAL = calculateBeatInterval();
+                score = 0;
+                combo = 0;
+                lives = MAX_LIVES;
+                lastDifficultyScore = 0;
+                playerHasActed = false;
+            } else {
+                // Non-master: use synced BPM and beat interval from host
+                // Keep current score, lives, combo (don't reset)
+                BEAT_INTERVAL = calculateBeatInterval();
+                playerHasActed = false;
+            }
 
             updateScoreDisplay();
             lastBeatTime = performance.now();
@@ -1234,12 +1293,40 @@
             // 2. Clear Canvas
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // 3. Draw Figures (Maestro left, Player right)
+            // 3. Draw Figures
+            // Draw Maestro (always on the left)
             const maestroAngles = POSE_DEFINITIONS[maestroPoseKey].arms;
-            const playerAngles = POSE_DEFINITIONS[playerPoseKey].arms;
+            drawFigure(maestroX, '#f97316', maestroAngles, "🎵 MAESTRO", '#fcd34d');
             
-            drawFigure(maestroX, '#f97316', maestroAngles, "🎵 MAESTRO", '#fcd34d'); // Orange (Left)
-            drawFigure(playerX, '#3b82f6', playerAngles, "👤 VOCÊ", '#60a5fa'); // Blue (Right)
+            // Draw all players (distributed on the right side)
+            const players = Object.entries(playersData).filter(([id, player]) => player.isAlive);
+            const playerCount = players.length;
+            
+            if (playerCount > 0) {
+                // Calculate positions for multiple players
+                const rightSideStart = canvasWidth * 0.55;
+                const rightSideEnd = canvasWidth * 0.95;
+                const spacing = playerCount > 1 ? (rightSideEnd - rightSideStart) / (playerCount - 1) : 0;
+                
+                players.forEach(([id, player], index) => {
+                    const isYou = id === currentPlayerId;
+                    const playerPoseAngles = POSE_DEFINITIONS[player.pose || 'UP_ARMS'].arms;
+                    const xPos = playerCount === 1 ? playerX : rightSideStart + (spacing * index);
+                    
+                    // Different colors for different players
+                    const colors = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ec4899'];
+                    const labelColors = ['#60a5fa', '#34d399', '#a78bfa', '#fbbf24', '#f472b6'];
+                    const playerColor = colors[index % colors.length];
+                    const playerLabelColor = labelColors[index % labelColors.length];
+                    
+                    const label = isYou ? "👤 VOCÊ" : `👤 ${player.name}`;
+                    drawFigure(xPos, playerColor, playerPoseAngles, label, playerLabelColor);
+                });
+            } else {
+                // Fallback: draw only current player
+                const playerAngles = POSE_DEFINITIONS[playerPoseKey].arms;
+                drawFigure(playerX, '#3b82f6', playerAngles, "👤 VOCÊ", '#60a5fa');
+            }
 
             // 4. Update Rhythm Indicator (progress bar)
             const timeElapsed = timestamp - lastBeatTime;
@@ -1262,7 +1349,7 @@
                     updateScoreDisplay();
                     
                     // Check if in demo mode and show warning
-                    const DEMO_MODE = true; // Must match the value in Firebase config
+                    const DEMO_MODE = false; // Must match the value in Firebase config
                     if (DEMO_MODE && demoModeWarning) {
                         demoModeWarning.classList.remove('hidden');
                     }
@@ -1275,9 +1362,10 @@
                     // Start game button
                     startGameBtn.addEventListener('click', startGame);
                     
-                    // Allow keyboard shortcuts in room
+                    // Allow SPACE key to start the game (only if you are the master/host)
                     document.addEventListener('keydown', (e) => {
-                        if (!gameStarted && !isGameLost && currentRoomCode && e.key !== 'Escape') {
+                        if (!gameStarted && !isGameLost && currentRoomCode && e.key === ' ' && isMaster) {
+                            e.preventDefault(); // Prevent page scroll
                             startGame();
                         }
                     });
