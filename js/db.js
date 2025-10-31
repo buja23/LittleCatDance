@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp, deleteField } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; // <-- ADICIONADO deleteField
 
 // Global Firebase variables exposed to the window object
 window.db = null;
@@ -15,6 +15,8 @@ window.setDoc = setDoc;
 window.updateDoc = updateDoc;
 window.onSnapshot = onSnapshot;
 window.serverTimestamp = serverTimestamp;
+window.deleteField = deleteField; // <-- ADICIONADO deleteField
+
 
 // Configuração do Firebase - SUBSTITUA COM SUAS CREDENCIAIS
 const firebaseConfig = {

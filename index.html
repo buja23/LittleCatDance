@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,13 +10,13 @@
 
     <script type="module" src="js/db.js"></script>
 
-    </head>
+</head>
 
 <body class="flex items-center justify-center min-h-screen p-4">
 
     <div id="game-container" class="w-full max-w-5xl bg-gray-800 p-8 rounded-xl shadow-2xl transition-all duration-300">
         <h1 class="text-4xl font-black text-center mb-6 text-yellow-300 tracking-wider">🎵 Little Cat Dance 🎵</h1>
-        
+
         <div id="lobby-screen" class="mb-6">
             <div id="demo-mode-warning" class="bg-yellow-600 border-2 border-yellow-400 p-4 rounded-lg mb-4 hidden">
                 <div class="flex items-center gap-3">
@@ -76,7 +77,7 @@
             </div>
 
             <div class="grid grid-cols-1 gap-2 mb-4" id="players-list">
-                </div>
+            </div>
 
             <div class="grid grid-cols-3 gap-4 items-center text-white text-xl font-bold p-3 bg-gray-700 rounded-lg">
                 <div class="text-lg text-center">
@@ -115,7 +116,7 @@
                     style="width: 0;"></div>
             </div>
 
-            <canvas id="game-canvas" width="800" height="300"
+            <canvas id="game-canvas" width="800" height="600"
                 class="bg-gray-900 rounded-lg shadow-xl border-4 border-gray-700"></canvas>
 
             <div id="start-game-container" class="mt-4 text-center hidden">
@@ -271,19 +272,40 @@
     </div>
 
 
+      <!-- =================================== -->
+       <!-- CARREGAMENTO DOS SCRIPTS (ORDEM CORRIGIDA) -->
+        <!-- =================================== -->
+
+        <!-- 2. Definições Básicas (sem dependências) -->
+       
     <script src="js/constants.js"></script>
+       
     <script src="js/dom.js"></script>
 
+        <!-- 3. Funções de Utilidade (dependem de constants.js e dom.js) -->
+       
     <script src="js/ui.js"></script>
+       
     <script src="js/drawing.js"></script>
+       
     <script src="js/score.js"></script>
-    <script src="js/game-logic.js"></script>
-    
-    <script src="js/multiplayer.js"></script>
 
+        <!-- 4. Controles (Define startGame, endGame) -->
+       
     <script src="js/controls.js"></script>
-    
-    <script src="js/main.js"></script> 
+
+        <!-- 5. Lógica Principal (Chama endGame) -->
+       
+    <script src="js/game-logic.js"></script>
+       
+        <!-- 6. Multiplayer (Chama startGame) -->
+       
+    <script src="js/multiplayer.js"></script>
+       
+        <!-- 7. Arquivo Principal (Chama o gameLoop, depende de TUDO) -->
+       
+    <script src="js/main.js"></script>
 
 </body>
+
 </html>

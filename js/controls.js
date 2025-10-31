@@ -5,26 +5,44 @@
 const handleInput = (key) => {
     if (instructionsModal.style.display === 'flex') return;
     if (!gameStarted || isGameLost) return;
-    if (playerHasActed) return; // Only one action per beat
+    if (playerHasActed) return; // Só permite uma ação por batida
 
     const poseToMatch = POSE_MAPPING[key];
     if (!poseToMatch) return;
 
-    playerHasActed = true;
+    playerHasActed = true; // Marca que o jogador agiu nesta batida
     const timestamp = performance.now();
+
+    // =======================================================
+    // CORREÇÃO DO BUG:
+    // Removemos o 'if (playerPoseKey !== poseToMatch)'
+    // Agora, a animação SEMPRE reinicia, fazendo as imagens
+    // estáticas aparecerem e as animações tocarem de novo.
+    // =======================================================
+    const localAnimState = playerAnimStates[currentPlayerId];
+    if (localAnimState) {
+        localAnimState.currentFrame = 0;
+        localAnimState.lastFrameTime = timestamp;
+    }
+
+    // Atualiza a pose local (para resposta instantânea no 'main.js')
+    playerPoseKey = poseToMatch;
+
+    // --- Lógica de Acerto ---
     const isCorrectPose = poseToMatch === maestroPoseKey;
 
+    // POSE ERRADA - Perde vida
     if (!isCorrectPose) {
-        playerPoseKey = poseToMatch;
         loseLife('❌ MOVIMENTO ERRADO!');
-        updatePlayerState();
+        updatePlayerState(); // Sincroniza (enviando a pose errada e a vida a menos)
         return;
     }
 
-    playerPoseKey = poseToMatch;
+    // POSE CORRETA - Verifica o Timing
     const timing = calculateTiming(timestamp);
 
     if (timing.hit) {
+        // Acerto Bom ou Excelente
         combo++;
         const comboBonus = combo > 1 ? Math.floor(combo * 0.5) : 0;
         const totalPoints = timing.score + comboBonus;
@@ -36,11 +54,12 @@ const handleInput = (key) => {
 
         increaseDifficulty();
     } else {
+        // Pose correta, mas timing errado
         loseLife(timing.msg);
     }
 
     updateScoreDisplay();
-    updatePlayerState();
+    updatePlayerState(); // Sincroniza o acerto
 };
 
 const handleKeyPress = (event) => {
@@ -68,7 +87,7 @@ const handleKeyPress = (event) => {
     }
 
     if (!gameStarted && !isGameLost) {
-        //startGame(); // O start game agora é pelo botão/espaço
+        // O 'startGame' agora é só pelo botão/espaço
     } else {
         handleInput(inputKey);
     }
@@ -77,7 +96,7 @@ const handleKeyPress = (event) => {
 const handleButtonClick = (event) => {
     const key = event.currentTarget.dataset.key;
     if (!gameStarted && !isGameLost) {
-        //startGame();
+        // O 'startGame' agora é só pelo botão/espaço
     } else {
         handleInput(key);
     }
@@ -106,14 +125,27 @@ const startGame = () => {
     updateScoreDisplay();
     lastBeatTime = performance.now();
     nextBeatScheduled = lastBeatTime + BEAT_INTERVAL;
-    maestroPoseKey = POSE_DEFINITION_KEYS[0];
-    playerPoseKey = POSE_DEFINITION_KEYS[0];
+    maestroPoseKey = POSE_DEFINITION_KEYS[0]; // Começa com UP_ARMS
+    playerPoseKey = POSE_DEFINITION_KEYS[0];  // Começa com UP_ARMS
+
+    // Reseta as animações locais
+    if (playerAnimStates[currentPlayerId]) {
+        playerAnimStates[currentPlayerId].currentFrame = 0;
+        playerAnimStates[currentPlayerId].lastFrameTime = lastBeatTime;
+    }
+    maestroAnimState.currentFrame = 0;
+    maestroAnimState.lastFrameTime = lastBeatTime;
+
 
     document.addEventListener('keydown', handleKeyPress);
     document.querySelectorAll('.key-button').forEach(button => {
         button.addEventListener('click', handleButtonClick);
     });
 
+    // Cancela qualquer loop antigo (caso o 'endGame' tenha deixado um rodando)
+    if (gameLoopId) {
+        cancelAnimationFrame(gameLoopId);
+    }
     gameLoopId = requestAnimationFrame(gameLoop);
     showFeedback('🎵 VAMOS LÁ! 🎵', 'text-yellow-300', 1500);
 
@@ -124,29 +156,39 @@ const startGame = () => {
 };
 
 const endGame = () => {
-    cancelAnimationFrame(gameLoopId);
+    // Não cancelamos o 'gameLoop' aqui, pois ele precisa
+    // continuar rodando para mostrar a animação de morte.
+    // Apenas setamos os estados.
     gameStarted = false;
     isGameLost = true;
     lives = 0;
-    playerHasActed = true;
+    playerHasActed = true; // Previne novas ações
     document.removeEventListener('keydown', handleKeyPress);
 
+    // =======================================================
+    // ATIVA A ANIMAÇÃO DE MORTE
+    // =======================================================
+    playerPoseKey = 'DEATH'; // 1. Define a pose local como "morte"
+
+    // 2. Reseta o estado da animação local para a morte (começa do frame 0)
+    const localAnimState = playerAnimStates[currentPlayerId];
+    if (localAnimState) {
+        localAnimState.currentFrame = 0;
+        localAnimState.lastFrameTime = performance.now();
+    }
+    // =======================================================
+
     saveHighScore(score);
-    updatePlayerState();
+    updatePlayerState(); // Envia o estado final (isAlive: false, pose: 'DEATH')
     showFeedback('💀 GAME OVER! 💀', 'text-red-500', 3000);
 
+    // Não precisamos mais desenhar no canvas aqui,
+    // o 'gameLoop' fará isso por nós.
+    /* (Removido)
     ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = 'white';
-    ctx.font = 'bold 40px Inter';
-    ctx.textAlign = 'center';
-    ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 40);
-    ctx.font = '25px Inter';
-    ctx.fillStyle = '#fcd34d';
-    ctx.fillText(`Sua Pontuação: ${score}`, canvas.width / 2, canvas.height / 2 + 10);
-    ctx.font = '20px Inter';
-    ctx.fillStyle = '#d1d5db';
-    ctx.fillText('Esperando o Host reiniciar o jogo...', canvas.width / 2, canvas.height / 2 + 60);
+    ...
+    */
 
     // Mostra o botão de start APENAS para o host
     if (isMaster) {
@@ -154,6 +196,3 @@ const endGame = () => {
         document.getElementById('start-game-hint').textContent = 'Pressione ESPAÇO ou clique para jogar novamente';
     }
 };
-
-// Esta função foi removida e substituída pela lógica em endGame e startGame
-// const handleRestart = () => { ... };

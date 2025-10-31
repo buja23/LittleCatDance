@@ -4,26 +4,21 @@
 
 const openInstructions = () => {
     instructionsModal.style.display = 'flex';
-    if (gameStarted) {
-        cancelAnimationFrame(gameLoopId); // Pause the game loop
-    }
+    // O gameLoop (em main.js) vai pausar o jogo automaticamente
 };
 
 const closeInstructions = () => {
     instructionsModal.style.display = 'none';
-    if (gameStarted) {
-        gameLoopId = requestAnimationFrame(gameLoop); // Resume the game loop
-    }
+    // O gameLoop (em main.js) vai resumir o jogo automaticamente
 };
 
-// Modal event listeners (Executado no 09-main.js)
-
+// Os event listeners são adicionados em main.js
 // showInstructionsButton.addEventListener('click', openInstructions);
 // closeInstructionsButton.addEventListener('click', closeInstructions);
 // instructionsModal.addEventListener('click', (e) => {
-//     if (e.target === instructionsModal) {
-//         closeInstructions();
-//     }
+//     if (e.target === instructionsModal) {
+//         closeInstructions();
+//     }
 // });
 
 const updateScoreDisplay = () => {
@@ -60,20 +55,22 @@ const updatePlayersListUI = () => {
     playersList.innerHTML = players.map(([id, player], index) => {
         const isYou = id === currentPlayerId;
         const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '';
+
+        // Se o jogador estiver vivo, mostra '✅', senão '💀'
         const aliveStatus = player.isAlive ? '✅' : '💀';
 
         return `
-            <div class="flex justify-between items-center p-3 bg-gray-${isYou ? '600' : '700'} rounded ${isYou ? 'border-2 border-yellow-400' : ''}">
-                <div class="flex items-center gap-3">
-                    <span class="text-2xl">${medal || aliveStatus}</span>
-                    <span class="font-bold ${isYou ? 'text-yellow-300' : 'text-white'}">${player.name}${isYou ? ' (VOCÊ)' : ''}</span>
-                </div>
-                <div class="flex gap-6 items-center text-sm">
-                    <span class="text-yellow-400">⭐ ${player.score}</span>
-                    <span class="text-red-400">❤️ ${player.lives}</span>
-                    <span class="text-purple-400">🔥 ${player.combo}x</span>
-                </div>
-            </div>
-        `;
+            <div class="flex justify-between items-center p-3 bg-gray-${isYou ? '600' : '700'} rounded ${isYou ? 'border-2 border-yellow-400' : ''}">
+                <div class="flex items-center gap-3">
+                    <span class="text-2xl">${medal || aliveStatus}</span>
+                    <span class="font-bold ${isYou ? 'text-yellow-300' : 'text-white'}">${player.name}${isYou ? ' (VOCÊ)' : ''}</span>
+                </div>
+                <div class="flex gap-6 items-center text-sm">
+                    <span class="text-yellow-400">⭐ ${player.score}</span>
+                    <span class="text-red-400">❤️ ${player.lives}</span>
+                    <span class="text-purple-400">🔥 ${player.combo}x</span>
+                </div>
+            </div>
+        `;
     }).join('');
 };

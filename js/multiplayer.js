@@ -120,6 +120,84 @@ const joinRoom = async () => {
     }
 };
 
+/**
+* Função chamada toda vez que os dados da sala mudam no Firebase
+*/
+const onRoomSnapshot = (snapshot) => {
+    if (!snapshot.exists()) {
+        leaveRoom();
+        alert('A sala foi fechada.');
+        return;
+    }
+
+    const roomData = snapshot.data();
+    playersData = roomData.players || {};
+
+    // =======================================================
+    // Sincroniza os estados de animação locais (playerAnimStates)
+    // (A variável 'playerAnimStates' é definida em dom.js)
+    // =======================================================
+    const playerIdsInRoom = Object.keys(playersData);
+    const animStateIds = Object.keys(playerAnimStates);
+
+    // 1. Adiciona animadores para jogadores que entraram
+    for (const playerId of playerIdsInRoom) {
+        if (!playerAnimStates[playerId]) {
+            // Cria um novo estado de animação local para este jogador
+            playerAnimStates[playerId] = {
+                currentFrame: 0,
+                lastFrameTime: performance.now()
+            };
+        }
+    }
+
+    // 2. Remove animadores de jogadores que saíram
+    for (const animId of animStateIds) {
+        if (!playersData[animId]) {
+            delete playerAnimStates[animId];
+        }
+    }
+    // =======================================================
+
+    updatePlayersListUI(); // Atualiza o placar
+
+    // Verifica se o jogo terminou (um vencedor foi definido)
+    if (roomData.gameState && roomData.gameState.ended) {
+        const winner = roomData.gameState.winner;
+        if (gameStarted) { // Se o jogo estava rodando para este cliente
+            gameStarted = false;
+            isGameLost = true; // Define como "perdido" para mostrar as animações finais
+
+            // =======================================================
+            // CORREÇÃO: Linha removida
+            // Não paramos o gameLoop para que a animação de morte possa tocar.
+            // cancelAnimationFrame(gameLoopId); 
+            // =======================================================
+
+            // O 'gameLoop' (em main.js) agora vai desenhar a tela de vencedor
+            // baseado no 'isGameLost' e 'gameState.ended'
+
+            if (currentPlayerId === winner.playerId) {
+                showFeedback('🏆 VOCÊ VENCEU! 🏆', 'text-yellow-400', 3000);
+            }
+        }
+        return; // Para a execução (o jogo acabou)
+    }
+
+    // Sincroniza o estado do jogo para quem não é o Master
+    if (!isMaster && roomData.gameState) {
+        const gs = roomData.gameState;
+        if (gs.started && !gameStarted) {
+            startGame();
+        }
+        maestroPoseKey = gs.maestroPose || 'UP_ARMS';
+        currentBPM = gs.currentBPM || START_BPM;
+        BEAT_INTERVAL = gs.beatInterval || (60000 / START_BPM);
+        lastBeatTime = gs.beatTime || performance.now();
+    }
+};
+
+
 const joinedRoom = (roomCode) => {
     currentRoomCodeDisplay.textContent = roomCode;
     lobbyScreen.classList.add('hidden');
@@ -134,77 +212,32 @@ const joinedRoom = (roomCode) => {
 
     if (unsubscribeRoom) unsubscribeRoom();
 
-    unsubscribeRoom = window.onSnapshot(roomRef, (snapshot) => {
-        if (!snapshot.exists()) {
-            leaveRoom();
-            alert('A sala foi fechada.');
-            return;
-        }
-
-        const roomData = snapshot.data();
-        playersData = roomData.players || {};
-
-        updatePlayersListUI();
-
-        if (roomData.gameState && roomData.gameState.ended) {
-            const winner = roomData.gameState.winner;
-            if (gameStarted) {
-                gameStarted = false;
-                isGameLost = true;
-                cancelAnimationFrame(gameLoopId);
-                
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = '#fcd34d';
-                ctx.font = 'bold 40px Inter';
-                ctx.textAlign = 'center';
-                ctx.fillText('🏆 JOGO FINALIZADO! 🏆', canvas.width / 2, canvas.height / 2 - 60);
-                ctx.fillStyle = 'white';
-                ctx.font = '30px Inter';
-                ctx.fillText(`${winner.name} venceu!`, canvas.width / 2, canvas.height / 2);
-                ctx.font = '25px Inter';
-                ctx.fillStyle = '#fcd34d';
-                ctx.fillText(`Pontuação: ${winner.score}`, canvas.width / 2, canvas.height / 2 + 40);
-                
-                if (currentPlayerId === winner.playerId) {
-                    showFeedback('🏆 VOCÊ VENCEU! 🏆', 'text-yellow-400', 3000);
-                }
-            }
-            return;
-        }
-
-        if (!isMaster && roomData.gameState) {
-            const gs = roomData.gameState;
-            if (gs.started && !gameStarted) {
-                startGame();
-            }
-            maestroPoseKey = gs.maestroPose || 'UP_ARMS';
-            currentBPM = gs.currentBPM || START_BPM;
-            BEAT_INTERVAL = gs.beatInterval || (60000 / START_BPM);
-            lastBeatTime = gs.beatTime || performance.now();
-        }
-    });
+    // Usa a nova função 'onRoomSnapshot' como callback
+    unsubscribeRoom = window.onSnapshot(roomRef, onRoomSnapshot);
 
     showFeedback('🎮 Conectado à sala!', 'text-green-400', 2000);
 
+    // Desenha a tela "Conectado"
     ctx.fillStyle = '#374151';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#fcd34d';
     ctx.font = 'bold 30px Inter';
     ctx.textAlign = 'center';
-    ctx.fillText('✅ Conectado!', canvas.width / 2, canvas.height / 2 - 20);
+    ctx.fillText('✅ Conectado!', canvasWidth / 2, canvas.height / 2 - 20);
     ctx.font = '20px Inter';
     ctx.fillStyle = '#d1d5db';
     if (isMaster) {
-        ctx.fillText('Pressione ESPAÇO para começar', canvas.width / 2, canvas.height / 2 + 20);
+        ctx.fillText('Pressione ESPAÇO para começar', canvasWidth / 2, canvas.height / 2 + 20);
     } else {
-        ctx.fillText('Aguardando o host iniciar o jogo...', canvas.width / 2, canvas.height / 2 + 20);
+        ctx.fillText('Aguardando o host iniciar o jogo...', canvasWidth / 2, canvas.height / 2 + 20);
     }
 };
 
 const updatePlayerState = async () => {
     if (!roomRef || !currentPlayerId) return;
     try {
+        // Usa 'updateDoc' com caminhos de campo para evitar sobrescrever
+        // os dados de outros jogadores (evita 'race conditions')
         const updates = {};
         updates[`players.${currentPlayerId}.name`] = playerName;
         updates[`players.${currentPlayerId}.score`] = score;
@@ -216,19 +249,26 @@ const updatePlayerState = async () => {
 
         await window.updateDoc(roomRef, updates);
 
-        const players = Object.values(playersData);
-        const alivePlayers = players.filter(p => p.isAlive);
-        
-        if (alivePlayers.length === 1 && alivePlayers[0].isAlive && players.length > 1) {
-            const winner = alivePlayers[0];
-            await window.updateDoc(roomRef, {
-                'gameState.ended': true,
-                'gameState.winner': {
-                    name: winner.name,
-                    score: winner.score,
-                    playerId: Object.entries(playersData).find(([_, p]) => p === winner)[0]
-                }
-            });
+        // Verifica se há um vencedor (só o Master precisa fazer isso)
+        if (isMaster) {
+            const players = Object.values(playersData);
+            const alivePlayers = players.filter(p => p.isAlive);
+
+            // Se só há 1 jogador vivo (e há mais de 1 jogador na sala)
+            if (alivePlayers.length === 1 && players.length > 1) {
+                const winner = alivePlayers[0];
+                // Encontra o ID do vencedor
+                const winnerId = Object.entries(playersData).find(([id, p]) => p.name === winner.name)[0];
+
+                await window.updateDoc(roomRef, {
+                    'gameState.ended': true,
+                    'gameState.winner': {
+                        name: winner.name,
+                        score: winner.score,
+                        playerId: winnerId
+                    }
+                });
+            }
         }
     } catch (e) {
         console.error('Error updating player state:', e);
@@ -259,7 +299,7 @@ const leaveRoom = async () => {
                 const roomData = roomSnap.data();
                 const updatedPlayers = { ...roomData.players };
                 delete updatedPlayers[currentPlayerId];
-                
+
                 await window.updateDoc(roomRef, {
                     players: updatedPlayers
                 });
@@ -279,6 +319,7 @@ const leaveRoom = async () => {
     isMaster = false;
     roomRef = null;
     playersData = {};
+    playerAnimStates = {}; // Limpa os animadores locais
 
     lobbyScreen.classList.remove('hidden');
     gameInfoBar.classList.add('hidden');
@@ -288,9 +329,14 @@ const leaveRoom = async () => {
         cancelAnimationFrame(gameLoopId);
         gameStarted = false;
     }
+    if (isGameLost) {
+        cancelAnimationFrame(gameLoopId);
+        isGameLost = false;
+    }
 
     showFeedback('👋 Você saiu da sala', 'text-gray-400', 2000);
 
+    // Desenha a tela inicial (lobby)
     ctx.fillStyle = '#374151';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#fcd34d';

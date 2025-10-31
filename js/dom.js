@@ -55,3 +55,30 @@
         let playersData = {}; // Store all players data
         let unsubscribeRoom = null;
         let isMaster = false; // If this player is the room master (controls game state)
+//==========================================
+        //Animaçoes
+
+        
+        // Popula o ALL_IMAGE_PATHS com base no SPRITE_DATA
+for (const type in SPRITE_DATA) {
+    for (const pose in SPRITE_DATA[type]) {
+        const spriteInfo = SPRITE_DATA[type][pose];
+        // Adiciona o caminho ao objeto, usando o próprio caminho como chave
+        // para evitar duplicatas de carregamento
+        ALL_IMAGE_PATHS[spriteInfo.src] = spriteInfo.src;
+    }
+}
+
+let loadedImages = {}; // Armazena as imagens (Image objects)
+let imagesLoadedCount = 0;
+let totalImagesToLoad = Object.keys(ALL_IMAGE_PATHS).length;
+
+// Guarda o estado da animação do Maestro
+let maestroAnimState = {
+    currentFrame: 0,
+    lastFrameTime: 0
+};
+
+// Guarda o estado da animação de TODOS os jogadores (localmente)
+// Chave: ID do jogador, Valor: { currentFrame, lastFrameTime }
+let playerAnimStates = {};
