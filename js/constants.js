@@ -1,4 +1,4 @@
-const START_BPM = 60;
+const START_BPM = 30;
 const BPM_INCREASE_RATE = 5;
 const SCORE_DIFFICULTY_THRESHOLD = 300;
 const MAX_LIVES = 3;

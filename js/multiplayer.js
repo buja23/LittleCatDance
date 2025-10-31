@@ -12,27 +12,23 @@ const generateRoomCode = () => {
 };
 
 const createRoom = async () => {
+    // ... (sem mudanças aqui) ...
     if (!window.doc || !window.setDoc) {
         alert('Sistema de salas não disponível no momento. Tente recarregar a página.');
         return;
     }
-
     const name = playerNameInput.value.trim() || 'Jogador';
     if (name.length === 0) {
         alert('Por favor, digite seu nome!');
         return;
     }
-
     const roomCode = generateRoomCode();
     currentRoomCode = roomCode;
-    currentPlayerId = crypto.randomUUID(); // Unique ID per session/tab
+    currentPlayerId = crypto.randomUUID();
     playerName = name;
     isMaster = true;
-
     try {
-        // Create room document
         roomRef = window.doc(window.db, `game_rooms/${roomCode}`);
-
         const roomData = {
             code: roomCode,
             created: Date.now(),
@@ -56,7 +52,6 @@ const createRoom = async () => {
                 }
             }
         };
-
         await window.setDoc(roomRef, roomData);
         joinedRoom(roomCode);
     } catch (e) {
@@ -66,38 +61,32 @@ const createRoom = async () => {
 };
 
 const joinRoom = async () => {
+    // ... (sem mudanças aqui) ...
     if (!window.doc || !window.getDoc || !window.setDoc) {
         alert('Sistema de salas não disponível no momento. Tente recarregar a página.');
         return;
     }
-
     const roomCode = roomCodeInput.value.trim().toUpperCase();
     const name = playerNameInput.value.trim() || 'Jogador';
-
     if (roomCode.length !== 6) {
         alert('Por favor, digite um código de sala válido (6 caracteres)!');
         return;
     }
-
     if (name.length === 0) {
         alert('Por favor, digite seu nome!');
         return;
     }
-
     try {
         roomRef = window.doc(window.db, `game_rooms/${roomCode}`);
         const roomSnap = await window.getDoc(roomRef);
-
         if (!roomSnap.exists()) {
             alert('Sala não encontrada! Verifique o código.');
             return;
         }
-
         currentRoomCode = roomCode;
-        currentPlayerId = crypto.randomUUID(); // Unique ID per session/tab
+        currentPlayerId = crypto.randomUUID();
         playerName = name;
         isMaster = false;
-
         const currentRoomData = roomSnap.data();
         const updatedPlayers = {
             ...currentRoomData.players,
@@ -111,7 +100,6 @@ const joinRoom = async () => {
                 lastUpdate: Date.now()
             }
         };
-
         await window.setDoc(roomRef, { players: updatedPlayers }, { merge: true });
         joinedRoom(roomCode);
     } catch (e) {
@@ -133,91 +121,89 @@ const onRoomSnapshot = (snapshot) => {
     const roomData = snapshot.data();
     playersData = roomData.players || {};
 
-    // =======================================================
-    // Sincroniza os estados de animação locais (playerAnimStates)
-    // (A variável 'playerAnimStates' é definida em dom.js)
-    // =======================================================
+    // Sincroniza os animadores (Correto)
     const playerIdsInRoom = Object.keys(playersData);
     const animStateIds = Object.keys(playerAnimStates);
-
-    // 1. Adiciona animadores para jogadores que entraram
     for (const playerId of playerIdsInRoom) {
         if (!playerAnimStates[playerId]) {
-            // Cria um novo estado de animação local para este jogador
             playerAnimStates[playerId] = {
                 currentFrame: 0,
                 lastFrameTime: performance.now()
             };
         }
     }
-
-    // 2. Remove animadores de jogadores que saíram
     for (const animId of animStateIds) {
         if (!playersData[animId]) {
             delete playerAnimStates[animId];
         }
     }
-    // =======================================================
 
-    updatePlayersListUI(); // Atualiza o placar
+    updatePlayersListUI();
 
     // Verifica se o jogo terminou (um vencedor foi definido)
     if (roomData.gameState && roomData.gameState.ended) {
-        const winner = roomData.gameState.winner;
-        if (gameStarted) { // Se o jogo estava rodando para este cliente
+        if (gameStarted) {
             gameStarted = false;
-            isGameLost = true; // Define como "perdido" para mostrar as animações finais
+            isGameLost = true;
 
-            // =======================================================
-            // CORREÇÃO: Linha removida
-            // Não paramos o gameLoop para que a animação de morte possa tocar.
-            // cancelAnimationFrame(gameLoopId); 
-            // =======================================================
+            // O gameLoop (main.js) agora lida com a tela de "Game Over"
 
-            // O 'gameLoop' (em main.js) agora vai desenhar a tela de vencedor
-            // baseado no 'isGameLost' e 'gameState.ended'
-
-            if (currentPlayerId === winner.playerId) {
+            const winner = roomData.gameState.winner;
+            if (winner && currentPlayerId === winner.playerId) {
                 showFeedback('🏆 VOCÊ VENCEU! 🏆', 'text-yellow-400', 3000);
             }
         }
-        return; // Para a execução (o jogo acabou)
+        return; // Para a execução (o jogo acabou, espera o master reiniciar)
     }
 
-    // Sincroniza o estado do jogo para quem não é o Master
+    // Sincroniza o estado do jogo para quem NÃO é o Master
     if (!isMaster && roomData.gameState) {
         const gs = roomData.gameState;
+
+        // Se o master iniciou o jogo, inicie o seu
         if (gs.started && !gameStarted) {
             startGame();
         }
+
+        // =======================================================
+        // CORREÇÃO 1: TIME SYNC (SINCRONIZAÇÃO DA BARRA)
+        // =======================================================
+        // Comparamos o 'beatTime' do master com o último que vimos.
+        if (gs.beatTime !== lastMasterBeatTime) {
+            // É uma nova batida!
+            // Resetamos o NOSSO timer local para o NOSSO tempo atual.
+            lastBeatTime = performance.now();
+
+            // Guardamos o 'beatTime' do master para não resetar de novo.
+            lastMasterBeatTime = gs.beatTime;
+
+            // Permite que o jogador aja nesta nova batida
+            playerHasActed = false;
+        }
+        // =======================================================
+
+        // Sincroniza a pose do maestro e o BPM
         maestroPoseKey = gs.maestroPose || 'UP_ARMS';
         currentBPM = gs.currentBPM || START_BPM;
         BEAT_INTERVAL = gs.beatInterval || (60000 / START_BPM);
-        lastBeatTime = gs.beatTime || performance.now();
     }
 };
 
 
 const joinedRoom = (roomCode) => {
+    // ... (sem mudanças aqui) ...
     currentRoomCodeDisplay.textContent = roomCode;
     lobbyScreen.classList.add('hidden');
     gameInfoBar.classList.remove('hidden');
-
     if (isMaster) {
         startGameContainer.classList.remove('hidden');
         document.getElementById('start-game-hint').textContent = 'Pressione ESPAÇO ou clique no botão';
     } else {
         startGameContainer.classList.add('hidden');
     }
-
     if (unsubscribeRoom) unsubscribeRoom();
-
-    // Usa a nova função 'onRoomSnapshot' como callback
     unsubscribeRoom = window.onSnapshot(roomRef, onRoomSnapshot);
-
     showFeedback('🎮 Conectado à sala!', 'text-green-400', 2000);
-
-    // Desenha a tela "Conectado"
     ctx.fillStyle = '#374151';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#fcd34d';
@@ -234,10 +220,9 @@ const joinedRoom = (roomCode) => {
 };
 
 const updatePlayerState = async () => {
+    // ... (sem mudanças aqui) ...
     if (!roomRef || !currentPlayerId) return;
     try {
-        // Usa 'updateDoc' com caminhos de campo para evitar sobrescrever
-        // os dados de outros jogadores (evita 'race conditions')
         const updates = {};
         updates[`players.${currentPlayerId}.name`] = playerName;
         updates[`players.${currentPlayerId}.score`] = score;
@@ -249,16 +234,14 @@ const updatePlayerState = async () => {
 
         await window.updateDoc(roomRef, updates);
 
-        // Verifica se há um vencedor (só o Master precisa fazer isso)
+        // O Master verifica se há um vencedor
         if (isMaster) {
             const players = Object.values(playersData);
             const alivePlayers = players.filter(p => p.isAlive);
 
-            // Se só há 1 jogador vivo (e há mais de 1 jogador na sala)
             if (alivePlayers.length === 1 && players.length > 1) {
                 const winner = alivePlayers[0];
-                // Encontra o ID do vencedor
-                const winnerId = Object.entries(playersData).find(([id, p]) => p.name === winner.name)[0];
+                const winnerId = Object.keys(playersData).find(key => playersData[key] === winner);
 
                 await window.updateDoc(roomRef, {
                     'gameState.ended': true,
@@ -280,9 +263,19 @@ const updateGameState = async () => {
     try {
         const updates = {
             'gameState.started': gameStarted,
+
+            // =======================================================
+            // CORREÇÃO 2: RESET DO JOGO
+            // =======================================================
+            // Quando o master inicia o jogo, ele limpa o 'ended' e 'winner'
+            // do jogo anterior.
+            'gameState.ended': false,
+            'gameState.winner': window.deleteField(), // Deleta o vencedor anterior
+            // =======================================================
+
             'gameState.maestroPose': maestroPoseKey,
             'gameState.currentBPM': currentBPM,
-            'gameState.beatTime': lastBeatTime,
+            'gameState.beatTime': lastBeatTime, // Envia o (master) timestamp do beat
             'gameState.beatInterval': BEAT_INTERVAL
         };
         await window.updateDoc(roomRef, updates);
@@ -292,6 +285,7 @@ const updateGameState = async () => {
 };
 
 const leaveRoom = async () => {
+    // ... (sem mudanças aqui) ...
     if (roomRef && currentPlayerId) {
         try {
             const roomSnap = await window.getDoc(roomRef);
@@ -308,23 +302,19 @@ const leaveRoom = async () => {
             console.error('Error removing player from room:', e);
         }
     }
-
     if (unsubscribeRoom) {
         unsubscribeRoom();
         unsubscribeRoom = null;
     }
-
     currentRoomCode = null;
     currentPlayerId = null;
     isMaster = false;
     roomRef = null;
     playersData = {};
-    playerAnimStates = {}; // Limpa os animadores locais
-
+    playerAnimStates = {};
     lobbyScreen.classList.remove('hidden');
     gameInfoBar.classList.add('hidden');
     startGameContainer.classList.add('hidden');
-
     if (gameStarted) {
         cancelAnimationFrame(gameLoopId);
         gameStarted = false;
@@ -333,10 +323,7 @@ const leaveRoom = async () => {
         cancelAnimationFrame(gameLoopId);
         isGameLost = false;
     }
-
     showFeedback('👋 Você saiu da sala', 'text-gray-400', 2000);
-
-    // Desenha a tela inicial (lobby)
     ctx.fillStyle = '#374151';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#fcd34d';
